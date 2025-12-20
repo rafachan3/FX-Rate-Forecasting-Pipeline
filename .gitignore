@@ -1,7 +1,87 @@
-venv/
-.venv/
+# Python
 __pycache__/
-*.pyc
-.DS_Store
-.env
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Packaging / build artifacts
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Tests / coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Type checking / lint caches
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Jupyter
 .ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# AWS credentials/config
+.aws/
+
+# AWS Lambda build outputs
+src/lambdas/**/build/
+src/lambdas/**/dist/
+src/lambdas/**/*.zip
+
+# Terraform
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/crash.log
+**/crash.*.log
+**/*.tfvars
+**/*.tfvars.json
+**/*.tfplan
+**/*.plan
+
+# Terragrunt
+.terragrunt-cache/
