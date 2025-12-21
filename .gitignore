@@ -85,3 +85,7 @@ src/lambdas/**/*.zip
 
 # Terragrunt
 .terragrunt-cache/
+
+# JetBrains IDE
+.idea/
+*.iml
