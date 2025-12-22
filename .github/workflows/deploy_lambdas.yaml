@@ -1,0 +1,99 @@
+name: Deploy Lambdas (selective)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/lambdas/**"
+      - ".github/workflows/deploy_lambdas.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed lambdas
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            bronze_ingestion:
+              - 'src/lambdas/bronze_ingestion/**'
+            bronze_to_silver:
+              - 'src/lambdas/bronze_to_silver/**'
+            silver_to_gold:
+              - 'src/lambdas/silver_to_gold/**'
+
+      - name: Build deployment matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          matrix="[]"
+
+          if [[ "${{ steps.changes.outputs.bronze_ingestion }}" == "true" ]]; then
+            matrix=$(echo "$matrix" | jq '. + [{"name":"bronze_ingestion","dir":"src/lambdas/bronze_ingestion","function":"fx-bronze-ingestion","zip":"bronze_ingestion.zip"}]')
+          fi
+
+          if [[ "${{ steps.changes.outputs.bronze_to_silver }}" == "true" ]]; then
+            matrix=$(echo "$matrix" | jq '. + [{"name":"bronze_to_silver","dir":"src/lambdas/bronze_to_silver","function":"fx-bronze-to-silver","zip":"bronze_to_silver.zip"}]')
+          fi
+
+          if [[ "${{ steps.changes.outputs.silver_to_gold }}" == "true" ]]; then
+            matrix=$(echo "$matrix" | jq '. + [{"name":"silver_to_gold","dir":"src/lambdas/silver_to_gold","function":"fx-silver-to-gold","zip":"silver_to_gold.zip"}]')
+          fi
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Deploy matrix: $matrix"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lambda: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::851725252715:role/github-actions-deploy-FX-lambdas
+          aws-region: us-east-1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Package ${{ matrix.lambda.name }}
+        shell: bash
+        run: |
+          cd "${{ matrix.lambda.dir }}"
+          rm -rf build dist
+          mkdir -p build dist
+
+          if [[ -f requirements.txt ]]; then
+            python -m pip install -r requirements.txt -t build
+          fi
+
+          cp handler.py build/
+          (cd build && zip -r "../dist/${{ matrix.lambda.zip }}" .)
+
+          ls -lh "dist/${{ matrix.lambda.zip }}"
+
+      - name: Deploy ${{ matrix.lambda.name }} to AWS Lambda
+        shell: bash
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ matrix.lambda.function }}" \
+            --zip-file "fileb://${{ matrix.lambda.dir }}/dist/${{ matrix.lambda.zip }}"
