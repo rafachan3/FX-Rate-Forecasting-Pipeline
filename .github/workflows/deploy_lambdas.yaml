@@ -5,7 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "src/lambdas/**"
-      - ".github/workflows/deploy_lambdas.yml"
+      - ".github/workflows/deploy_lambdas.yaml"
 
 permissions:
   id-token: write
