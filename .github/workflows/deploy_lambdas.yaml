@@ -38,17 +38,17 @@ jobs:
           matrix="[]"
 
           if [[ "${{ steps.changes.outputs.bronze_ingestion }}" == "true" ]]; then
-            matrix=$(echo "$matrix" | jq '. + [{"name":"bronze_ingestion","dir":"src/lambdas/bronze_ingestion","function":"fx-bronze-ingestion","zip":"bronze_ingestion.zip"}]')
+          matrix=$(echo "$matrix" | jq -c '. + [{"name":"bronze_ingestion","dir":"src/lambdas/bronze_ingestion","function":"fx-bronze-ingestion","zip":"bronze_ingestion.zip"}]')
           fi
-
+      
           if [[ "${{ steps.changes.outputs.bronze_to_silver }}" == "true" ]]; then
-            matrix=$(echo "$matrix" | jq '. + [{"name":"bronze_to_silver","dir":"src/lambdas/bronze_to_silver","function":"fx-bronze-to-silver","zip":"bronze_to_silver.zip"}]')
+            matrix=$(echo "$matrix" | jq -c '. + [{"name":"bronze_to_silver","dir":"src/lambdas/bronze_to_silver","function":"fx-bronze-to-silver","zip":"bronze_to_silver.zip"}]')
           fi
-
+      
           if [[ "${{ steps.changes.outputs.silver_to_gold }}" == "true" ]]; then
-            matrix=$(echo "$matrix" | jq '. + [{"name":"silver_to_gold","dir":"src/lambdas/silver_to_gold","function":"fx-silver-to-gold","zip":"silver_to_gold.zip"}]')
+            matrix=$(echo "$matrix" | jq -c '. + [{"name":"silver_to_gold","dir":"src/lambdas/silver_to_gold","function":"fx-silver-to-gold","zip":"silver_to_gold.zip"}]')
           fi
-
+      
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "Deploy matrix: $matrix"
 
