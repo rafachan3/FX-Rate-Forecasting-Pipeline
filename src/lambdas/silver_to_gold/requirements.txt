@@ -1,0 +1,1 @@
+# Using AWS-managed layer AWSSDKPandas-Python312 (includes pandas + numpy + pyarrow)
