@@ -91,10 +91,7 @@ def lambda_handler(event, context):
     """
     Bronze ingestion Lambda for Bank of Canada FX rates.
     
-    Supports both daily incremental runs and one-time backfill via event override.
-    
-    Daily (default): Pulls last N days (sliding window)
-    Backfill: Pass {"backfill": true, "start_date": "2017-01-01"} to load history
+    Pulls last N days of FX data using a sliding window approach.
     """
 
     # Configuration from environment
@@ -106,17 +103,10 @@ def lambda_handler(event, context):
     # Current timestamp
     now = datetime.now(timezone.utc)
     
-    # Determine mode: backfill vs incremental
-    if event.get("backfill"):
-        # Backfill mode: use provided dates
-        start_date = event["start_date"]
-        end_date = event.get("end_date", now.date().isoformat())
-        print(f"[BACKFILL MODE] {start_date} to {end_date}")
-    else:
-        # Incremental mode: sliding window
-        end_date = now.date().isoformat()
-        start_date = (now.date() - timedelta(days=lookback_days)).isoformat()
-        print(f"[INCREMENTAL MODE] {start_date} to {end_date}")
+    # Sliding window: fetch last N days
+    end_date = now.date().isoformat()
+    start_date = (now.date() - timedelta(days=lookback_days)).isoformat()
+    print(f"Fetching {start_date} to {end_date}")
     
     # Process each series
     results = []
