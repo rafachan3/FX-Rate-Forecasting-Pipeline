@@ -89,3 +89,9 @@ src/lambdas/**/*.zip
 # JetBrains IDE
 .idea/
 *.iml
+
+# Temporary runtime directory
+tmp/
+
+# Lambda invoke responses (if saved locally)
+response.json
