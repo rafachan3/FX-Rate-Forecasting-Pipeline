@@ -1,82 +1,168 @@
-# FX Rate Forecasting Pipeline (USD/CAD) — Direction + Confidence
+# FX Rate Forecasting Pipeline
 
-This project builds a reproducible forecasting pipeline for **USD/CAD** using daily data.
-Instead of predicting exact FX levels (often close to a random walk), the current focus is:
+This repository contains a research-oriented pipeline for **directional FX forecasting**, currently focused on the **USD/CAD** pair at a **daily (business-day)** frequency.
 
-> **Predict the direction of USD/CAD over the next 7 business days + a confidence score.**
+The project is explicitly framed around:
+- probabilistic **directional prediction** (UP / DOWN),
+- **selective decision-making** via confidence gating,
+- stability, calibration, and interpretability over raw accuracy.
 
-The work is currently **notebook-first** to maximize iteration speed and documentation quality.
-Once the approach is stable, we will refactor notebooks into a clean `src/` package.
-
----
-
-## Data
-
-Primary dataset: **Gold-layer parquet** containing USD/CAD observations and engineered features.
-
-- File: `data/data-USD-CAD.parquet`
-- Key columns:
-  - `obs_date` (business-day index)
-  - `value` (USD/CAD FX rate)
-  - engineered features: returns, lags, rolling stats, calendar flags
-
+This is **not** a point-forecasting system and does not attempt to maximize headline accuracy.
 
 ---
 
-## Current Modeling Target
+## Project Scope and Framing
 
-We define a 7-business-day forward return:
+### Key design choices
+- **Target**: Direction of cumulative return over a 7-business-day horizon.
+- **Output**: Probabilities, not point estimates.
+- **Evaluation philosophy**:
+  - Weak signals are acceptable if they are stable and well-characterized.
+  - Acting less often (abstaining) is preferable to acting noisily.
+  - Decision logic is treated as a first-class layer, separate from modeling.
 
-- `target_return_7d = value[t+7] / value[t] - 1`
-- `target_direction_7d = 1 if target_return_7d > 0 else 0`
-
----
-
-## Evaluation Philosophy
-
-We evaluate both:
-- **Classification accuracy** (direction)
-- **Probabilistic quality**: log loss, Brier score
-- **Confidence gating**: performance vs. coverage (e.g., accuracy when confidence ≥ 0.60)
-
-This matches a realistic decision-support product: models should be allowed to say **"no strong signal"**.
+### What this project is *not*
+- No intraday or high-frequency modeling.
+- No hyperparameter tuning or model ensembling via probability averaging.
+- No deep learning.
+- No production trading system.
 
 ---
 
-## Notebooks
+## Data Contract
 
-### 01 — Gold Loader + QC
-`notebooks/01_gold_loader_and_qc.ipynb`
+### FX Pair
+- USD/CAD
 
-- Loads gold parquet
-- Validates date range and missingness
-- Defines target for `H=7`
-- Builds feature matrix `X` and labels `y`
+### Frequency
+- Daily (business days only)
+- Weekend gaps are expected and validated
 
-### 02 — Direction Baselines Backtest
-`notebooks/02_direction_backtest_baselines.ipynb`
+### Gold Layer Schema (strict)
+Each gold parquet file must contain:
 
-- Rolling expanding-window backtest for direction at `H=7`
-- Baselines:
-  - Coinflip probability (0.5)
-  - Momentum probability (return / volatility → sigmoid)
-  - Logistic regression baseline
-- Saves outputs to `outputs/`
+| Column       | Description                                  |
+|-------------|----------------------------------------------|
+| `obs_date`  | Observation date (business day)              |
+| `series_id` | Single identifier per file                   |
+| `value`     | FX rate value                                |
+| `prev_value`| Exact lag-1 value (no gaps, no recomputation)|
+
+Any deviation from this contract is treated as an error.
+
+---
+
+## Repository Structure
+```text
+.
+├── notebooks/
+│   ├── 01_gold_loader_and_qc.ipynb
+│   ├── 02_direction_backtest_baselines.ipynb
+│   ├── 03_direction_feature_engineering.ipynb
+│   ├── 04_logistic_regression_direction.ipynb
+│   ├── 05_tree_model_direction.ipynb
+│   └── 06_decision_policy_confidence_gating.ipynb
+│
+├── outputs/        # generated artifacts (ignored by git)
+├── src/            # shared utilities (minimal, optional)
+├── README.md
+└── .gitignore
+```
+---
+
+## Notebook Overview
+
+### 01 — Gold Loader and QC
+- Loads gold-layer parquet data.
+- Enforces schema, ordering, and lag integrity.
+- Validates date continuity (business days only).
+
+### 02 — Direction Backtest Baselines
+- Defines directional target (7-day horizon).
+- Implements naive and heuristic baselines.
+- Introduces rolling backtest protocol.
+- Evaluates confidence buckets and coverage vs accuracy.
+
+### 03 — Direction Feature Engineering
+- Leakage-safe feature construction.
+- Feature groups include:
+  - lagged returns,
+  - rolling volatility,
+  - momentum and z-scores,
+  - regime flags,
+  - calendar effects.
+- Explicit validation against gold data contract.
+
+### 04 — Logistic Regression (Directional Anchor)
+- Expanding-window, monthly refit backtest.
+- Logistic regression used as an interpretable probability anchor.
+- Evaluation includes:
+  - overall metrics,
+  - confidence buckets,
+  - coefficient stability over time.
+
+### 05 — Tree-Based Direction Model
+- Controlled non-linear model (HistGradientBoosting).
+- Same backtest protocol as logistic regression.
+- Feature importance inspection.
+- Conclusion: non-linear capacity does not materially improve the signal.
+
+### 06 — Decision Policy and Confidence Gating
+- Introduces a **decision layer** on top of model probabilities.
+- Evaluates selective prediction strategies:
+  - single-model confidence thresholds,
+  - agreement gating (logreg + tree),
+  - balanced top-k confidence selection.
+- Metrics are computed **only on acted subsets**:
+  - conditional accuracy,
+  - logloss,
+  - Brier score,
+  - ECE (Expected Calibration Error).
+- Includes:
+  - coverage tradeoff curves,
+  - regime-conditional diagnostics,
+  - rolling 1Y stability analysis,
+  - worst-year stress tests.
+- Locks a default operating policy based on empirical tradeoffs.
+
+---
+
+## Key Findings (Current State)
+
+- The directional signal in USD/CAD exists but is **weak**.
+- Confidence stratification is meaningful:
+  - higher confidence → better conditional performance.
+- Logistic regression provides the most reliable probability estimates.
+- Tree models add value primarily through **agreement filtering**, not probability quality.
+- Decision logic (when to act vs abstain) has more impact than model complexity.
+- The system is stable across regimes but exhibits expected drawdowns.
 
 ---
 
 ## Outputs
 
-By default, the backtest notebook saves:
+Generated artifacts (ignored by git) include:
+- Per-date out-of-sample prediction tables.
+- Coverage vs metric sweep CSVs.
+- Regime-conditional performance summaries.
 
-- `outputs/direction_baseline_backtest_rows.csv`
-- `outputs/direction_baseline_metrics_overall.csv`
-- `outputs/direction_baseline_metrics_by_confidence.csv`
-
-(Outputs are typically ignored from version control.)
+These are intended for analysis and visualization, not as committed artifacts.
 
 ---
 
-## Next Step
 
-Add a stronger model (XGBoost) and compare against baselines with the same rolling backtest + confidence metrics.
+## Status and Next Steps
+
+- Research protocol through decision-layer evaluation is complete.
+- Current focus is on:
+  - optional post-hoc probability calibration,
+  - or freezing the research stack before infrastructure work.
+
+The project prioritizes correctness, interpretability, and stability over aggressive optimization.
+
+---
+
+## Disclaimer
+
+This repository is for research and experimentation only.
+It does not constitute trading advice or a production trading system.
