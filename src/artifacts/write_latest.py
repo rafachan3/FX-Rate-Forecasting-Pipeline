@@ -129,12 +129,13 @@ def build_latest(
 
 
 def write_artifacts(outputs_dir: Path, artifact: LatestArtifact) -> tuple[Path, Path]:
-    latest_dir = outputs_dir / "latest"
-    latest_dir.mkdir(parents=True, exist_ok=True)
+    # If caller already points to a "latest" directory, don't nest another one.
+    target_dir = outputs_dir if outputs_dir.name == "latest" else (outputs_dir / "latest")
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     pair_slug = _slug(artifact.pair)
-    json_path = latest_dir / f"latest_{pair_slug}_{artifact.horizon}.json"
-    csv_path = latest_dir / f"latest_{pair_slug}_{artifact.horizon}.csv"
+    json_path = target_dir / f"latest_{pair_slug}_{artifact.horizon}.json"
+    csv_path = target_dir / f"latest_{pair_slug}_{artifact.horizon}.csv"
 
     payload = asdict(artifact)
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
