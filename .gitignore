@@ -1,19 +1,26 @@
-# venv
-venv/
-.venv/
+# outputs (all generated artifacts)
+outputs/
+outputs/**
 
-# python
-__pycache__/
-*.pyc
+# data
+data/*.parquet
+data/*.csv
 
-# mac
-.DS_Store
+# notebooks outputs (optional)
+**/.ipynb_checkpoints/
 
-# env files
-.env
+# python packaging/build
+*.egg-info/
+dist/
+build/
 
-# notebooks
-.ipynb_checkpoints/
+# logs
+*.log
 
-# IDE
-.idea/
+# coverage / pytest
+.coverage
+htmlcov/
+.pytest_cache/
+
+# dotenv variants
+.env.*
