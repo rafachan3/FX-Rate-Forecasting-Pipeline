@@ -41,35 +41,45 @@ This is **not** a point-forecasting system and does not attempt to maximize head
 ### Gold Layer Schema (strict)
 Each gold parquet file must contain:
 
-| Column       | Description                                  |
-|-------------|----------------------------------------------|
-| `obs_date`  | Observation date (business day)              |
-| `series_id` | Single identifier per file                   |
-| `value`     | FX rate value                                |
-| `prev_value`| Exact lag-1 value (no gaps, no recomputation)|
+| Column        | Description                                  |
+|---------------|----------------------------------------------|
+| `obs_date`    | Observation date (business day)              |
+| `series_id`   | Single identifier per file                   |
+| `value`       | FX rate value                                |
+| `prev_value`  | Exact lag-1 value (no gaps, no recomputation)|
 
 Any deviation from this contract is treated as an error.
 
 ---
 
 ## Repository Structure
+
 ```text
-.
+FX-Rate-Forecasting-Pipeline
+│
+├── data/
+│   └── data-USD-CAD.parquet          # gold-layer FX data (local, ignored)
+│
 ├── notebooks/
 │   ├── 01_gold_loader_and_qc.ipynb
 │   ├── 02_direction_backtest_baselines.ipynb
 │   ├── 03_direction_feature_engineering.ipynb
 │   ├── 04_logistic_regression_direction.ipynb
 │   ├── 05_tree_model_direction.ipynb
-│   └── 06_decision_policy_confidence_gating.ipynb
+│   ├── 06_decision_policy_confidence_gating.ipynb
+│   └── 07_probability_calibration.ipynb
 │
-├── outputs/        # generated artifacts (ignored by git)
-├── src/            # shared utilities (minimal, optional)
+├── src/
+│   └── artifacts/
+│       └── write_latest.py           # UI-ready artifact writer
+│
+├── outputs/                          # generated artifacts (git-ignored)
+│
+├── requirements.txt                  # minimal, intentional dependencies
 ├── README.md
 └── .gitignore
-```
----
 
+```
 ## Notebook Overview
 
 ### 01 — Gold Loader and QC
@@ -77,11 +87,15 @@ Any deviation from this contract is treated as an error.
 - Enforces schema, ordering, and lag integrity.
 - Validates date continuity (business days only).
 
+---
+
 ### 02 — Direction Backtest Baselines
 - Defines directional target (7-day horizon).
 - Implements naive and heuristic baselines.
 - Introduces rolling backtest protocol.
 - Evaluates confidence buckets and coverage vs accuracy.
+
+---
 
 ### 03 — Direction Feature Engineering
 - Leakage-safe feature construction.
@@ -93,6 +107,8 @@ Any deviation from this contract is treated as an error.
   - calendar effects.
 - Explicit validation against gold data contract.
 
+---
+
 ### 04 — Logistic Regression (Directional Anchor)
 - Expanding-window, monthly refit backtest.
 - Logistic regression used as an interpretable probability anchor.
@@ -101,11 +117,15 @@ Any deviation from this contract is treated as an error.
   - confidence buckets,
   - coefficient stability over time.
 
+---
+
 ### 05 — Tree-Based Direction Model
 - Controlled non-linear model (HistGradientBoosting).
 - Same backtest protocol as logistic regression.
 - Feature importance inspection.
 - Conclusion: non-linear capacity does not materially improve the signal.
+
+---
 
 ### 06 — Decision Policy and Confidence Gating
 - Introduces a **decision layer** on top of model probabilities.
@@ -115,7 +135,7 @@ Any deviation from this contract is treated as an error.
   - balanced top-k confidence selection.
 - Metrics are computed **only on acted subsets**:
   - conditional accuracy,
-  - logloss,
+  - log loss,
   - Brier score,
   - ECE (Expected Calibration Error).
 - Includes:
@@ -131,32 +151,30 @@ Any deviation from this contract is treated as an error.
 
 This notebook evaluates **post-hoc probability calibration** under a strictly out-of-sample protocol. Calibration is treated as a probability-quality tool, not a signal-enhancement technique.
 
-Calibration protocol:
+#### Calibration protocol
 - Expanding-window monthly refit.
-- A rolling calibration window drawn strictly from past data.
-- Calibrators are fit only on historical predictions and applied to future test periods.
-- No leakage into the test month.
+- Rolling calibration window drawn strictly from past data.
+- Calibrators fit only on historical predictions.
+- No leakage into test months.
 
-Methods:
+#### Methods
 - Isotonic regression with safe fallback to identity when data is insufficient.
 
-Evaluation focuses on:
+#### Evaluation focuses on
 - LogLoss, Brier score, and ECE (10- and 20-bin).
 - Reliability (calibration) curves.
-- Impact of calibration on decision policies defined in Notebook 06.
+- Impact of calibration on decision policies from Notebook 06.
 
-Key findings:
-- Calibration materially improves probability reliability (lower ECE), especially for:
-  - balanced top-k policies,
-  - tree-based probabilities.
-- Calibration does **not** improve directional accuracy.
-- Calibration can degrade threshold-gating performance by shrinking extreme probabilities.
-- Probability treatment must therefore be **policy-aware**.
+#### Key findings
+- Calibration materially improves probability reliability (lower ECE).
+- No improvement in directional accuracy.
+- Threshold-gating policies may degrade under calibration.
+- Probability treatment must be **policy-aware**.
 
-Operational takeaway:
+#### Operational takeaway
 - Logistic regression:
-  - raw probabilities preferred for threshold-based gating,
-  - calibrated probabilities preferred for ranking-based (top-k) policies.
+  - raw probabilities preferred for threshold gating,
+  - calibrated probabilities preferred for ranking-based policies.
 - Tree models:
   - calibrated probabilities preferred in all cases.
 
@@ -164,33 +182,35 @@ Operational takeaway:
 
 ## Output Artifacts (UI Contract)
 
-The pipeline produces a small number of stable artifacts intended for UI consumption and scheduled inference runs. All artifacts are written to `outputs/` and are ignored by git.
+The pipeline produces stable artifacts intended for UI consumption and scheduled inference runs.  
+All artifacts are written to `outputs/` and are ignored by git.
 
 ### Canonical daily artifact (UI-facing)
+
 **`outputs/predictions_latest_h7.parquet`**
 
-One row per business day (`obs_date`) containing model probabilities, decision outputs, and metadata.
+One row per business day (`obs_date`) containing probabilities, decisions, and metadata.
 
-Stable schema:
+#### Stable schema
 - `obs_date`
-- `pair` (e.g., `USDCAD`)
-- `horizon_bdays` (fixed at 7)
+- `pair`
+- `horizon_bdays`
 - `model_version` (git SHA)
 - `p_up_logreg_raw`, `p_up_tree_raw`
-- `p_up_logreg_cal`, `p_up_tree_cal` (nullable if calibration disabled)
+- `p_up_logreg_cal`, `p_up_tree_cal`
 - `policy_name`
-- `policy_params` (JSON string)
+- `policy_params` (JSON)
 - `action` ∈ {`UP`, `DOWN`, `ABSTAIN`}
 - `confidence` ∈ [0, 1]
 - `coverage_target` (nullable)
 - `regime` (nullable)
 
-This artifact is the primary input for any UI or downstream consumer.
+---
 
 ### Run metadata
+
 **`outputs/run_metadata_h7.json`**
 
-Small JSON file describing the most recent inference run:
 - `pair`
 - `horizon_bdays`
 - `as_of_date`
@@ -200,8 +220,11 @@ Small JSON file describing the most recent inference run:
 - `policy_name`
 - `policy_params`
 
+---
+
 ### Research and diagnostic artifacts
-These are generated by notebooks and are intended for diagnostics and UI visualization, not for daily inference logic:
+
+Generated by notebooks for diagnostics and visualization:
 - `outputs/decision_policy_sweep.csv`
 - `outputs/decision_policy_by_regime.csv`
 - `outputs/calibration_metrics_overall.csv`
@@ -212,7 +235,7 @@ These are generated by notebooks and are intended for diagnostics and UI visuali
 
 ## Current Status and Next Steps
 
-At this stage, the research pipeline includes:
+The research pipeline is feature-complete and stable:
 - directional modeling,
 - confidence-gated decision policies,
 - regime-aware diagnostics,
@@ -220,16 +243,16 @@ At this stage, the research pipeline includes:
 
 The signal is weak but stable, and decision behavior is well-characterized.
 
-Next steps are primarily **operational**, not statistical:
+**Next steps are operational, not statistical**
 - scheduled inference (e.g., AWS),
 - artifact materialization for UI consumption,
 - monitoring for data drift and policy stability.
 
-No further model complexity is planned at this stage.
+No further model complexity is planned.
 
 ---
 
 ## Disclaimer
 
-This repository is for research and experimentation only.
+This repository is for research and experimentation only.  
 It does not constitute trading advice or a production trading system.
