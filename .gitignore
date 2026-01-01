@@ -1,12 +1,11 @@
 # outputs (all generated artifacts)
 outputs/
-outputs/**
 
-# data
-data/*.parquet
-data/*.csv
+# data (local downloads / exports)
+data/
+!data/.gitkeep
 
-# notebooks outputs (optional)
+# notebooks
 **/.ipynb_checkpoints/
 
 # python packaging/build

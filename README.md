@@ -21,12 +21,6 @@ This is **not** a point-forecasting system and does not attempt to maximize head
   - Acting less often (abstaining) is preferable to acting noisily.
   - Decision logic is treated as a first-class layer, separate from modeling.
 
-### What this project is *not*
-- No intraday or high-frequency modeling.
-- No hyperparameter tuning or model ensembling via probability averaging.
-- No deep learning.
-- No production trading system.
-
 ---
 
 ## Data Contract
@@ -51,6 +45,38 @@ Each gold parquet file must contain:
 Any deviation from this contract is treated as an error.
 
 ---
+
+## Gold Data Source (Read-Only)
+
+This project consumes **Gold-layer FX data** produced by an upstream ingestion pipeline.
+
+Key properties:
+- Gold data is **authoritative and immutable**
+- This repository **does not generate raw FX data**
+- All modeling, evaluation, and artifacts assume the Gold contract is already satisfied
+
+For local research and development, Gold data can be synced into a local parquet file via a small CLI utility.  
+The local copy is treated as **read-only input** and is excluded from version control.
+
+---
+
+## Syncing Gold Data Locally
+
+Gold data can be downloaded locally using the provided sync script.
+
+Example (USD/CAD):
+
+```bash
+python -m scripts.sync_gold \
+  --series FXUSDCAD \
+  --out data/data-USD-CAD.parquet \
+  --with-watermark
+```
+This command:
+- downloads the latest Gold parquet for the requested series,
+- optionally retrieves the associated watermark metadata,
+- writes a local, UI-ready parquet file for downstream notebooks and scripts.
+
 
 ## Repository Structure
 
