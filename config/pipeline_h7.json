@@ -1,0 +1,26 @@
+{
+  "horizon": "h7",
+  "timezone": "America/Toronto",
+  "series": [
+    {
+      "series_id": "FXUSDCAD",
+      "gold_local_path": "data/gold/FXUSDCAD/data.parquet"
+    }
+  ],
+  "s3": {
+    "bucket": "fx-rate-pipeline-dev",
+    "prefix_template": "gold/source=BoC/series={series_id}/",
+    "filename": "data.parquet"
+  },
+  "artifacts": {
+    "dir": "models",
+    "model_file": "logreg_h7.joblib",
+    "features_file": "features_h7.json",
+    "metadata_file": "metadata_h7.json"
+  },
+  "outputs": {
+    "runs_dir": "outputs/runs",
+    "latest_dir": "outputs/latest"
+  }
+}
+
