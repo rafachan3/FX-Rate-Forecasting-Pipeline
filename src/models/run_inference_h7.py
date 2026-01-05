@@ -312,12 +312,36 @@ def run_inference(
         df_all["obs_date"] = df_all.index
         df_all = df_all.reset_index(drop=True)
     
-    # Ensure deterministic column order
-    output_cols = ["obs_date", "series_id", "p_up_logreg", "action_logreg"]
-    df_output = df_all[output_cols].copy()
+    # Enforce output contract: exact columns required
+    REQUIRED_COLS = ["obs_date", "series_id", "p_up_logreg", "action_logreg"]
     
-    # Final sort by obs_date, then series_id for determinism
-    df_output = df_output.sort_values(["obs_date", "series_id"]).reset_index(drop=True)
+    # Check for missing required columns
+    missing_cols = set(REQUIRED_COLS) - set(df_all.columns)
+    if missing_cols:
+        raise ValueError(
+            f"Output contract violation: missing required columns: {sorted(missing_cols)}. "
+            f"Available columns: {sorted(df_all.columns)}"
+        )
+    
+    # Check for extra columns (fail-loud, do not silently drop)
+    extra_cols = set(df_all.columns) - set(REQUIRED_COLS)
+    if extra_cols:
+        raise ValueError(
+            f"Output contract violation: extra columns found: {sorted(extra_cols)}. "
+            f"Required columns only: {REQUIRED_COLS}"
+        )
+    
+    # Select columns in exact required order
+    df_output = df_all[REQUIRED_COLS].copy()
+    
+    # Ensure series_id is present (should already be, but fail-loud if not)
+    if df_output["series_id"].isna().any():
+        raise ValueError("Output contract violation: series_id contains NaN values")
+    
+    # Final sort by obs_date, then series_id using stable sort for determinism
+    df_output = df_output.sort_values(
+        ["obs_date", "series_id"], kind="mergesort"
+    ).reset_index(drop=True)
     
     print(f"\nTotal predictions: {len(df_output)}")
     print(f"Date range: {df_output['obs_date'].min()} to {df_output['obs_date'].max()}")
