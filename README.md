@@ -83,6 +83,9 @@ This command:
 ```text
 FX-Rate-Forecasting-Pipeline
 │
+├── config/
+│   └── pipeline_h7.json              # pipeline configuration
+│
 ├── data/
 │   └── data-USD-CAD.parquet          # gold-layer FX data (local, ignored)
 │
@@ -96,8 +99,11 @@ FX-Rate-Forecasting-Pipeline
 │   └── 07_probability_calibration.ipynb
 │
 ├── src/
-│   └── artifacts/
-│       └── write_latest.py           # UI-ready artifact writer
+│   ├── artifacts/
+│   │   └── write_latest.py           # UI-ready artifact writer
+│   └── pipeline/
+│       ├── config.py                 # configuration schema and loader
+│       └── run_date.py                # Toronto timezone utilities
 │
 ├── outputs/                          # generated artifacts (git-ignored)
 │
@@ -106,6 +112,48 @@ FX-Rate-Forecasting-Pipeline
 └── .gitignore
 
 ```
+
+---
+
+## Pipeline Configuration
+
+The pipeline uses a strict configuration schema defined in `config/pipeline_h7.json`. This configuration specifies:
+
+- **Horizon**: Must be `"h7"` (7-business-day horizon)
+- **Timezone**: Must be `"America/Toronto"` (all run dates use Toronto wall clock)
+- **Series**: List of FX series with local Gold data paths
+- **S3**: S3 bucket and key template for Gold data storage
+- **Artifacts**: Model artifact locations (model, features, metadata files)
+- **Outputs**: Output directory paths for runs and latest artifacts
+
+The configuration loader (`src.pipeline.config.load_pipeline_config`) enforces strict validation:
+- Rejects unknown keys (prevents silent config drift)
+- Validates all required fields are non-empty
+- Ensures S3 prefix templates contain `{series_id}` placeholder
+- Validates filenames end with `.parquet` where required
+
+### Run Date Utilities
+
+Run dates are determined using **America/Toronto timezone** (wall clock time). The `src.pipeline.run_date` module provides:
+
+- `toronto_today()`: Returns today's date in Toronto timezone
+- `toronto_now_iso()`: Returns current datetime as ISO string in Toronto timezone
+
+These utilities ensure deterministic run date calculation regardless of where the pipeline executes (e.g., UTC servers).
+
+### Testing Pipeline Components
+
+Run tests for pipeline configuration and run date utilities:
+
+```bash
+# Test run date utilities
+python -m pytest tests/test_run_date_toronto.py -v
+
+# Test configuration schema and loader
+python -m pytest tests/test_pipeline_config.py -v
+```
+
+---
 ## Notebook Overview
 
 ### 01 — Gold Loader and QC
