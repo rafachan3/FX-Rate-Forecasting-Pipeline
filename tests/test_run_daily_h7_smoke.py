@@ -120,6 +120,7 @@ def test_run_daily_h7_smoke(tmp_path: Path):
                             run_date=None,
                             models_dir=None,
                             publish=False,
+                            email=False,
                         )
                         
                         main()
@@ -245,6 +246,7 @@ def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
                                     run_date=None,
                                     models_dir=None,
                                     publish=True,  # Enable publish
+                                    email=False,
                                 )
                                 
                                 main()
@@ -360,6 +362,7 @@ def test_run_daily_h7_publish_run_failure_prevents_latest_publish(tmp_path: Path
                                     run_date=None,
                                     models_dir=None,
                                     publish=True,  # Enable publish
+                                    email=False,
                                 )
                                 
                                 with pytest.raises(RuntimeError, match="S3 upload failed"):
@@ -453,6 +456,196 @@ def test_run_daily_h7_publish_without_config_raises_error(tmp_path: Path):
                         
                         with pytest.raises(
                             ValueError, match="publish configuration is missing"
+                        ):
+                            main()
+
+
+def test_run_daily_h7_email_sends_after_outputs_exist(tmp_path: Path):
+    """Test that email is sent after outputs exist."""
+    # Create config with email section
+    config_path = tmp_path / "config.json"
+    runs_dir = tmp_path / "outputs" / "runs"
+    latest_dir = tmp_path / "outputs" / "latest"
+    gold_dir = tmp_path / "data" / "gold"
+    models_dir = tmp_path / "models"
+    
+    gold_path = gold_dir / "FXUSDCAD" / "data.parquet"
+    create_minimal_gold_parquet(gold_path, "FXUSDCAD", n_rows=100)
+    
+    # Create minimal model artifacts
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "logreg_h7.joblib").write_bytes(b"fake model")
+    (models_dir / "features_h7.json").write_text(json.dumps(["feature1", "feature2"]))
+    (models_dir / "metadata_h7.json").write_text(
+        json.dumps({"version": "test", "horizon": 7})
+    )
+    
+    config_data = {
+        "horizon": "h7",
+        "timezone": "America/Toronto",
+        "series": [
+            {"series_id": "FXUSDCAD", "gold_local_path": str(gold_path)},
+        ],
+        "s3": {
+            "bucket": "test-bucket",
+            "prefix_template": "gold/source=BoC/series={series_id}/",
+            "filename": "data.parquet",
+            "profile": "fx-gold",
+        },
+        "artifacts": {
+            "dir": str(models_dir),
+            "model_file": "logreg_h7.joblib",
+            "features_file": "features_h7.json",
+            "metadata_file": "metadata_h7.json",
+        },
+        "outputs": {
+            "runs_dir": str(runs_dir),
+            "latest_dir": str(latest_dir),
+        },
+        "email": {
+            "provider": "ses",
+            "region": "us-east-2",
+            "from_email": "sender@example.com",
+            "to_emails": ["recipient@example.com"],
+            "subject_template": "[FX] {horizon} latest — {run_date}",
+            "body_format": "text",
+            "aws_profile": "fx-gold",
+        },
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(config_data, f)
+    
+    # Mock inference subprocess to create predictions directly
+    run_date = "2024-01-15"
+    run_predictions_path = runs_dir / run_date / "decision_predictions_h7.parquet"
+    
+    def mock_inference_subprocess(cmd, **kwargs):
+        # Create predictions file directly
+        create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
+        return MagicMock(returncode=0, stderr="")
+    
+    # Mock email functions
+    with patch("src.pipeline.run_daily_h7.send_email_ses") as mock_send_email:
+        # Mock toronto_today to return fixed date
+        with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+            mock_today.return_value.isoformat.return_value = run_date
+            
+            with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+                mock_now.return_value = "2024-01-15T14:30:00-05:00"
+                
+                with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                    # Mock get_git_sha
+                    with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                        mock_git.return_value = "a" * 40
+                        
+                        # Run main with mocked args and --email flag
+                        with patch(
+                            "src.pipeline.run_daily_h7.parse_args"
+                        ) as mock_args:
+                            mock_args.return_value = MagicMock(
+                                config=str(config_path),
+                                sync=False,
+                                run_date=None,
+                                models_dir=None,
+                                publish=False,
+                                email=True,  # Enable email
+                            )
+                            
+                            main()
+        
+        # Verify send_email_ses was called after outputs exist
+        assert mock_send_email.called
+        call_args = mock_send_email.call_args
+        assert call_args[0][0].from_email == "sender@example.com"
+        assert call_args[0][0].to_emails == ["recipient@example.com"]
+        assert "[FX] h7 latest — 2024-01-15" in call_args[0][1]  # subject
+        assert "h7" in call_args[0][2]  # body contains horizon
+        assert "2024-01-15" in call_args[0][2]  # body contains run_date
+
+
+def test_run_daily_h7_email_without_config_raises_error(tmp_path: Path):
+    """Test that --email flag without email config raises ValueError."""
+    # Create config WITHOUT email section
+    config_path = tmp_path / "config.json"
+    runs_dir = tmp_path / "outputs" / "runs"
+    latest_dir = tmp_path / "outputs" / "latest"
+    gold_dir = tmp_path / "data" / "gold"
+    models_dir = tmp_path / "models"
+    
+    gold_path = gold_dir / "FXUSDCAD" / "data.parquet"
+    create_minimal_gold_parquet(gold_path, "FXUSDCAD", n_rows=100)
+    
+    # Create minimal model artifacts
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "logreg_h7.joblib").write_bytes(b"fake model")
+    (models_dir / "features_h7.json").write_text(json.dumps(["feature1", "feature2"]))
+    (models_dir / "metadata_h7.json").write_text(
+        json.dumps({"version": "test", "horizon": 7})
+    )
+    
+    config_data = {
+        "horizon": "h7",
+        "timezone": "America/Toronto",
+        "series": [
+            {"series_id": "FXUSDCAD", "gold_local_path": str(gold_path)},
+        ],
+        "s3": {
+            "bucket": "test-bucket",
+            "prefix_template": "gold/source=BoC/series={series_id}/",
+            "filename": "data.parquet",
+            "profile": "fx-gold",
+        },
+        "artifacts": {
+            "dir": str(models_dir),
+            "model_file": "logreg_h7.joblib",
+            "features_file": "features_h7.json",
+            "metadata_file": "metadata_h7.json",
+        },
+        "outputs": {
+            "runs_dir": str(runs_dir),
+            "latest_dir": str(latest_dir),
+        },
+        # No email section
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(config_data, f)
+    
+    # Mock inference subprocess to create predictions directly
+    run_date = "2024-01-15"
+    run_predictions_path = runs_dir / run_date / "decision_predictions_h7.parquet"
+    
+    def mock_inference_subprocess(cmd, **kwargs):
+        # Create predictions file directly
+        create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
+        return MagicMock(returncode=0, stderr="")
+    
+    # Mock toronto_today to return fixed date
+    with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+        mock_today.return_value.isoformat.return_value = run_date
+        
+        with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+            mock_now.return_value = "2024-01-15T14:30:00-05:00"
+            
+            with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                # Mock get_git_sha
+                with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                    mock_git.return_value = "a" * 40
+                    
+                    # Run main with mocked args and --email flag
+                    with patch("src.pipeline.run_daily_h7.parse_args") as mock_args:
+                        mock_args.return_value = MagicMock(
+                            config=str(config_path),
+                            sync=False,
+                            run_date=None,
+                            models_dir=None,
+                            publish=False,
+                            email=True,  # Enable email but no config
+                        )
+                        
+                        with pytest.raises(
+                            ValueError, match="email configuration is missing"
                         ):
                             main()
 

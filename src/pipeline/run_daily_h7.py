@@ -15,6 +15,7 @@ from src.pipeline.paths import (
     get_run_manifest_path,
     get_run_predictions_path,
 )
+from src.pipeline.email_ses import build_email_body_text, build_email_subject, send_email_ses
 from src.pipeline.publish_s3 import publish_latest_outputs, publish_run_outputs
 from src.pipeline.run_date import toronto_now_iso, toronto_today
 
@@ -51,6 +52,11 @@ def parse_args() -> argparse.Namespace:
         "--publish",
         action="store_true",
         help="Publish outputs to S3 after local promotion (requires publish config)",
+    )
+    parser.add_argument(
+        "--email",
+        action="store_true",
+        help="Send email notification after promotion (requires email config)",
     )
     return parser.parse_args()
 
@@ -207,9 +213,44 @@ def main() -> None:
         latest_prefix = config.publish.prefix_latest.format(horizon=config.horizon)
         published_info = f" published=runs:{runs_prefix},latest:{latest_prefix}"
     
+    # Send email (if requested)
+    emailed_info = ""
+    if args.email:
+        if config.email is None:
+            raise ValueError(
+                "--email flag provided but email configuration is missing in config file"
+            )
+        
+        # Build publish config dict for email body (if publish was enabled)
+        publish_config_dict = None
+        if args.publish and config.publish:
+            runs_prefix = config.publish.prefix_runs_template.format(
+                horizon=config.horizon, run_date=run_date
+            )
+            latest_prefix = config.publish.prefix_latest.format(horizon=config.horizon)
+            publish_config_dict = {
+                "bucket": config.publish.bucket,
+                "runs_prefix": runs_prefix,
+                "latest_prefix": latest_prefix,
+            }
+        
+        # Build email subject and body
+        subject = build_email_subject(config.email, config.horizon, run_date)
+        body_text = build_email_body_text(
+            horizon=config.horizon,
+            run_date=run_date,
+            latest_dir=config.outputs.latest_dir,
+            manifest_path=None,  # Will auto-detect from latest_dir
+            publish_config=publish_config_dict,
+        )
+        
+        # Send email
+        send_email_ses(config.email, subject, body_text)
+        emailed_info = " emailed=true"
+    
     # Print single success line
     print(
-        f"[OK] run_date={run_date} promoted=decision_predictions_h7.parquet,manifest.json{published_info}"
+        f"[OK] run_date={run_date} promoted=decision_predictions_h7.parquet,manifest.json{published_info}{emailed_info}"
     )
 
 
