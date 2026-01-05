@@ -259,6 +259,13 @@ This notebook evaluates **post-hoc probability calibration** under a strictly ou
 The pipeline produces stable artifacts intended for UI consumption and scheduled inference runs.  
 All artifacts are written to `outputs/` and are ignored by git.
 
+### Latest Promotion (Atomic)
+
+Artifacts are promoted to `outputs/latest/` using atomic file operations:
+- Multiple files (parquet, JSON manifest) are promoted atomically using temporary directories and `os.replace`
+- If any source file is missing or any copy fails, the latest directory remains unchanged
+- Each run writes a manifest (`manifest.json`) recording run metadata, file hashes, and data ranges
+
 ### Canonical daily artifact (UI-facing)
 
 **`outputs/predictions_latest_h7.parquet`**
