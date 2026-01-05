@@ -1,12 +1,13 @@
 """
 Tests for src.artifacts.write_latest module.
 """
+import json
 import pytest
 import pandas as pd
 import tempfile
 from pathlib import Path
 
-from src.artifacts.write_latest import build_latest, LatestRow
+from src.artifacts.write_latest import build_latest, LatestRow, promote_to_latest
 
 
 def test_build_latest_with_decision_confidence():
@@ -177,4 +178,134 @@ def test_build_latest_uses_logreg_when_available():
         
         # Second row: uses tree (0.3 <= 0.4 -> DOWN)
         assert artifact.rows[1].decision == "DOWN"
+
+
+def test_promote_to_latest_atomic(tmp_path: Path):
+    """Test that promote_to_latest atomically promotes files."""
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    
+    # Create source files
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    src_parquet = src_dir / "predictions.parquet"
+    src_json = src_dir / "manifest.json"
+    
+    df = pd.DataFrame({"col": [1, 2, 3]})
+    df.to_parquet(src_parquet, index=False)
+    src_json.write_text(json.dumps({"test": "data"}), encoding="utf-8")
+    
+    # Promote files
+    promote_to_latest(
+        latest_dir=str(latest_dir),
+        files=[
+            (str(src_parquet), "predictions.parquet"),
+            (str(src_json), "manifest.json"),
+        ],
+    )
+    
+    # Verify files exist in latest
+    assert (latest_dir / "predictions.parquet").exists()
+    assert (latest_dir / "manifest.json").exists()
+    
+    # Verify temp directory was cleaned up
+    temp_dirs = [d for d in latest_dir.iterdir() if d.name.startswith(".tmp_")]
+    assert len(temp_dirs) == 0
+    
+    # Verify file contents match
+    df_read = pd.read_parquet(latest_dir / "predictions.parquet")
+    assert len(df_read) == 3
+    
+    manifest_read = json.loads((latest_dir / "manifest.json").read_text())
+    assert manifest_read == {"test": "data"}
+
+
+def test_promote_to_latest_missing_source_raises(tmp_path: Path):
+    """Test that missing source file raises before modifying latest."""
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    
+    # Create one source file
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    src_parquet = src_dir / "predictions.parquet"
+    df = pd.DataFrame({"col": [1, 2, 3]})
+    df.to_parquet(src_parquet, index=False)
+    
+    missing_file = src_dir / "missing.parquet"
+    
+    # Try to promote with missing file
+    with pytest.raises(FileNotFoundError, match="Source file not found"):
+        promote_to_latest(
+            latest_dir=str(latest_dir),
+            files=[
+                (str(src_parquet), "predictions.parquet"),
+                (str(missing_file), "missing.parquet"),
+            ],
+        )
+    
+    # Verify latest directory was not modified
+    assert not (latest_dir / "predictions.parquet").exists()
+    assert not (latest_dir / "missing.parquet").exists()
+
+
+def test_promote_to_latest_deterministic(tmp_path: Path):
+    """Test that promote_to_latest produces deterministic results."""
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    
+    # Create source file
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    src_file = src_dir / "data.parquet"
+    df = pd.DataFrame({"col": [1, 2, 3]})
+    df.to_parquet(src_file, index=False)
+    
+    # Promote twice
+    promote_to_latest(
+        latest_dir=str(latest_dir),
+        files=[(str(src_file), "data.parquet")],
+    )
+    
+    # Modify source
+    df2 = pd.DataFrame({"col": [4, 5, 6]})
+    df2.to_parquet(src_file, index=False)
+    
+    # Promote again
+    promote_to_latest(
+        latest_dir=str(latest_dir),
+        files=[(str(src_file), "data.parquet")],
+    )
+    
+    # Verify latest contains new content
+    df_read = pd.read_parquet(latest_dir / "data.parquet")
+    assert df_read["col"].tolist() == [4, 5, 6]
+
+
+def test_promote_to_latest_overwrites_existing(tmp_path: Path):
+    """Test that promote_to_latest overwrites existing files atomically."""
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir()
+    
+    # Create initial file in latest
+    old_file = latest_dir / "data.parquet"
+    df_old = pd.DataFrame({"col": [1, 2, 3]})
+    df_old.to_parquet(old_file, index=False)
+    
+    # Create new source file
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    src_file = src_dir / "data.parquet"
+    df_new = pd.DataFrame({"col": [4, 5, 6]})
+    df_new.to_parquet(src_file, index=False)
+    
+    # Promote new file
+    promote_to_latest(
+        latest_dir=str(latest_dir),
+        files=[(str(src_file), "data.parquet")],
+    )
+    
+    # Verify old file was replaced
+    df_read = pd.read_parquet(latest_dir / "data.parquet")
+    assert df_read["col"].tolist() == [4, 5, 6]
 
