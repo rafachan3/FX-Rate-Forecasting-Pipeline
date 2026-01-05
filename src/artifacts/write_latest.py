@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
+import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -193,6 +196,62 @@ def build_latest(
         generated_at=pd.Timestamp.utcnow().isoformat(timespec="seconds") + "Z",
         rows=rows,
     )
+
+
+def promote_to_latest(*, latest_dir: str, files: list[tuple[str, str]]) -> None:
+    """
+    Atomically promote multiple files to latest directory.
+    
+    Uses a temporary directory and os.replace for atomicity. If any source file
+    is missing or any copy fails, the latest directory remains unchanged.
+    
+    Args:
+        latest_dir: Target directory for latest artifacts
+        files: List of (src_path, dst_filename) tuples
+        
+    Raises:
+        FileNotFoundError: If any source file is missing (before any writes)
+        OSError: If file operations fail
+    """
+    latest_path = Path(latest_dir)
+    latest_path.mkdir(parents=True, exist_ok=True)
+    
+    # Validate all source files exist before starting
+    for src_path, _ in files:
+        src = Path(src_path)
+        if not src.exists():
+            raise FileNotFoundError(f"Source file not found: {src_path}")
+    
+    # Create temporary directory inside latest_dir
+    temp_dir = latest_path / f".tmp_{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Copy all files to temp directory
+        temp_files = []
+        for src_path, dst_filename in files:
+            src = Path(src_path)
+            temp_dst = temp_dir / dst_filename
+            
+            # Copy file
+            shutil.copy2(src, temp_dst)
+            temp_files.append((temp_dst, latest_path / dst_filename))
+        
+        # Atomically move files from temp to latest using os.replace
+        for temp_file, final_file in temp_files:
+            os.replace(temp_file, final_file)
+        
+        # Cleanup temp directory on success
+        temp_dir.rmdir()
+        
+    except Exception as e:
+        # Try to cleanup temp directory, but don't hide original error
+        try:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+        except Exception:
+            pass  # Ignore cleanup errors
+        raise  # Re-raise original error
 
 
 def write_artifacts(outputs_dir: Path, artifact: LatestArtifact) -> tuple[Path, Path]:
