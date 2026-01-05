@@ -202,21 +202,51 @@ def build_run_manifest(
     # Read predictions to get by_series_rows
     df_pred = pd.read_parquet(predictions_path)
     
-    # Validate required columns
-    required_cols = {"obs_date", "series_id", "p_up_logreg", "action_logreg"}
-    missing_cols = required_cols - set(df_pred.columns)
+    # Enforce output contract: exact columns required
+    REQUIRED_COLS = {"obs_date", "series_id", "p_up_logreg", "action_logreg"}
+    missing_cols = REQUIRED_COLS - set(df_pred.columns)
     if missing_cols:
         raise ValueError(
-            f"Predictions parquet missing required columns: {sorted(missing_cols)}"
+            f"Predictions parquet missing required columns: {sorted(missing_cols)}. "
+            f"Available columns: {sorted(df_pred.columns)}"
         )
     
-    # Count rows by series_id (sorted for determinism)
-    by_series_rows = (
+    # Fail loudly on extra columns (do not silently ignore)
+    extra_cols = set(df_pred.columns) - REQUIRED_COLS
+    if extra_cols:
+        raise ValueError(
+            f"Predictions parquet has extra columns: {sorted(extra_cols)}. "
+            f"Required columns only: {sorted(REQUIRED_COLS)}"
+        )
+    
+    # Validate multi-series consistency
+    gold_series_ids = {g["series_id"] for g in gold_inputs}
+    pred_series_ids = set(df_pred["series_id"].unique())
+    
+    if len(gold_series_ids) > 1:
+        # Multiple gold inputs: predictions must contain multiple series
+        if len(pred_series_ids) <= 1:
+            raise ValueError(
+                f"Multi-series gold inputs ({len(gold_series_ids)} series) but predictions "
+                f"contain only {len(pred_series_ids)} series. Expected combined output."
+            )
+        # All gold series should appear in predictions
+        missing_in_pred = gold_series_ids - pred_series_ids
+        if missing_in_pred:
+            raise ValueError(
+                f"Gold series missing in predictions: {sorted(missing_in_pred)}. "
+                f"Predictions contain: {sorted(pred_series_ids)}"
+            )
+    
+    # Count rows by series_id (deterministic: sorted list then dict)
+    series_counts = (
         df_pred.groupby("series_id")
         .size()
-        .sort_index()
-        .to_dict()
+        .sort_index()  # Sort by series_id for determinism
     )
+    
+    # Build dict from sorted series to ensure deterministic key order
+    by_series_rows = {series_id: int(count) for series_id, count in series_counts.items()}
     
     manifest = {
         "run_date": run_date,

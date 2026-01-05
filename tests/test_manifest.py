@@ -244,6 +244,165 @@ def test_build_run_manifest_missing_predictions_columns(tmp_path: Path):
         )
 
 
+def test_manifest_records_predictions_by_series_rows_deterministically(tmp_path: Path):
+    """Test that manifest records by_series_rows deterministically with sorted keys."""
+    # Create gold input
+    gold_dir = tmp_path / "gold"
+    gold_dir.mkdir()
+    gold_path = gold_dir / "FXUSDCAD.parquet"
+    
+    df_gold = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=3, freq="D"),
+        "value": [1.0, 1.1, 1.2],
+    })
+    df_gold.to_parquet(gold_path, index=False)
+    
+    # Create model artifacts
+    artifacts_dir = tmp_path / "models"
+    artifacts_dir.mkdir()
+    model_file = artifacts_dir / "model.joblib"
+    features_file = artifacts_dir / "features.json"
+    model_file.write_bytes(b"fake model data")
+    features_file.write_bytes(b'{"features": ["f1", "f2"]}')
+    
+    # Create predictions parquet with TWO series and known row counts
+    predictions_path = tmp_path / "predictions.parquet"
+    df_pred = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=5, freq="D"),
+        "series_id": ["FXEURCAD", "FXEURCAD", "FXUSDCAD", "FXUSDCAD", "FXUSDCAD"],
+        "p_up_logreg": [0.6, 0.7, 0.4, 0.5, 0.6],
+        "action_logreg": ["UP", "UP", "DOWN", "SIDEWAYS", "UP"],
+    })
+    df_pred.to_parquet(predictions_path, index=False)
+    
+    # Build manifest with two gold inputs
+    manifest = build_run_manifest(
+        run_date="2024-01-15",
+        run_timestamp="2024-01-15T14:30:00-05:00",
+        gold_inputs=[
+            {"series_id": "FXEURCAD", "path": gold_path},
+            {"series_id": "FXUSDCAD", "path": gold_path},
+        ],
+        model_artifacts={
+            "dir": artifacts_dir,
+            "files": {
+                "model.joblib": model_file,
+                "features.json": features_file,
+            },
+        },
+        predictions_path=predictions_path,
+    )
+    
+    # Verify by_series_rows exists
+    assert "by_series_rows" in manifest["predictions"]
+    by_series_rows = manifest["predictions"]["by_series_rows"]
+    
+    # Verify counts match expected
+    assert by_series_rows["FXEURCAD"] == 2
+    assert by_series_rows["FXUSDCAD"] == 3
+    
+    # Verify keys appear in sorted order (deterministic)
+    keys = list(by_series_rows.keys())
+    assert keys == sorted(keys)
+    assert keys == ["FXEURCAD", "FXUSDCAD"]
+
+
+def test_manifest_validates_multi_series_consistency(tmp_path: Path):
+    """Test that manifest fails loudly if multi-series gold doesn't match predictions."""
+    gold_dir = tmp_path / "gold"
+    gold_dir.mkdir()
+    gold_path = gold_dir / "FXUSDCAD.parquet"
+    
+    df_gold = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=3, freq="D"),
+        "value": [1.0, 1.1, 1.2],
+    })
+    df_gold.to_parquet(gold_path, index=False)
+    
+    artifacts_dir = tmp_path / "models"
+    artifacts_dir.mkdir()
+    model_file = artifacts_dir / "model.joblib"
+    features_file = artifacts_dir / "features.json"
+    model_file.write_bytes(b"fake")
+    features_file.write_bytes(b'{"features": ["f1"]}')
+    
+    # Create predictions with only ONE series (but gold has two)
+    predictions_path = tmp_path / "predictions.parquet"
+    df_pred = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=2, freq="D"),
+        "series_id": ["FXUSDCAD", "FXUSDCAD"],  # Only one series
+        "p_up_logreg": [0.6, 0.7],
+        "action_logreg": ["UP", "UP"],
+    })
+    df_pred.to_parquet(predictions_path, index=False)
+    
+    # Should fail because gold has 2 series but predictions have 1
+    with pytest.raises(ValueError, match="Multi-series gold inputs.*but predictions contain only"):
+        build_run_manifest(
+            run_date="2024-01-15",
+            run_timestamp="2024-01-15T14:30:00-05:00",
+            gold_inputs=[
+                {"series_id": "FXEURCAD", "path": gold_path},
+                {"series_id": "FXUSDCAD", "path": gold_path},
+            ],
+            model_artifacts={
+                "dir": artifacts_dir,
+                "files": {
+                    "model.joblib": model_file,
+                    "features.json": features_file,
+                },
+            },
+            predictions_path=predictions_path,
+        )
+
+
+def test_manifest_fails_on_extra_columns(tmp_path: Path):
+    """Test that manifest building fails loudly on extra columns in predictions."""
+    gold_dir = tmp_path / "gold"
+    gold_dir.mkdir()
+    gold_path = gold_dir / "FXUSDCAD.parquet"
+    
+    df_gold = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=3, freq="D"),
+        "value": [1.0, 1.1, 1.2],
+    })
+    df_gold.to_parquet(gold_path, index=False)
+    
+    artifacts_dir = tmp_path / "models"
+    artifacts_dir.mkdir()
+    model_file = artifacts_dir / "model.joblib"
+    features_file = artifacts_dir / "features.json"
+    model_file.write_bytes(b"fake")
+    features_file.write_bytes(b'{"features": ["f1"]}')
+    
+    # Create predictions with EXTRA column
+    predictions_path = tmp_path / "predictions.parquet"
+    df_pred = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=2, freq="D"),
+        "series_id": ["FXUSDCAD", "FXUSDCAD"],
+        "p_up_logreg": [0.6, 0.7],
+        "action_logreg": ["UP", "UP"],
+        "extra_col": [1, 2],  # Extra column
+    })
+    df_pred.to_parquet(predictions_path, index=False)
+    
+    # Should fail on extra columns
+    with pytest.raises(ValueError, match="Predictions parquet has extra columns"):
+        build_run_manifest(
+            run_date="2024-01-15",
+            run_timestamp="2024-01-15T14:30:00-05:00",
+            gold_inputs=[{"series_id": "FXUSDCAD", "path": gold_path}],
+            model_artifacts={
+                "dir": artifacts_dir,
+                "files": {
+                    "model.joblib": model_file,
+                    "features.json": features_file,
+                },
+            },
+            predictions_path=predictions_path,
+        )
+
+
 def test_build_run_manifest_deterministic(tmp_path: Path):
     """Test that manifest is deterministic (same inputs -> same output)."""
     # Create test files
