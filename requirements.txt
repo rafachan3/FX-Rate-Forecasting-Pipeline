@@ -11,6 +11,7 @@ pandas==2.3.3
 pyarrow==22.0.0
 scikit-learn==1.8.0
 joblib==1.5.3
+boto3==1.35.0
 
 # Development and testing dependencies
 pytest==9.0.2

@@ -124,6 +124,43 @@ class PublishConfig:
 
 
 @dataclass
+class EmailConfig:
+    """Email delivery configuration."""
+    
+    provider: str
+    region: str
+    from_email: str
+    to_emails: list[str]
+    subject_template: str
+    body_format: str = "text"
+    aws_profile: str | None = None
+    
+    def __post_init__(self) -> None:
+        """Validate email configuration."""
+        if self.provider != "ses":
+            raise ValueError(f'email.provider must be "ses", got "{self.provider}"')
+        if not self.region or not isinstance(self.region, str):
+            raise ValueError("email.region must be a non-empty string")
+        if not self.from_email or not isinstance(self.from_email, str):
+            raise ValueError("email.from_email must be a non-empty string")
+        if not isinstance(self.to_emails, list) or len(self.to_emails) == 0:
+            raise ValueError("email.to_emails must be a non-empty list")
+        for i, email in enumerate(self.to_emails):
+            if not email or not isinstance(email, str):
+                raise ValueError(f"email.to_emails[{i}] must be a non-empty string")
+        if not self.subject_template or not isinstance(self.subject_template, str):
+            raise ValueError("email.subject_template must be a non-empty string")
+        if "{horizon}" not in self.subject_template:
+            raise ValueError('email.subject_template must contain "{horizon}" placeholder')
+        if "{run_date}" not in self.subject_template:
+            raise ValueError('email.subject_template must contain "{run_date}" placeholder')
+        if self.body_format not in ("text",):
+            raise ValueError(f'email.body_format must be "text", got "{self.body_format}"')
+        if self.aws_profile is not None and (not isinstance(self.aws_profile, str) or not self.aws_profile):
+            raise ValueError("email.aws_profile must be None or a non-empty string")
+
+
+@dataclass
 class PipelineConfig:
     """Complete pipeline configuration."""
     
@@ -134,6 +171,7 @@ class PipelineConfig:
     artifacts: ArtifactsConfig
     outputs: OutputsConfig
     publish: PublishConfig | None = None
+    email: EmailConfig | None = None
     
     def __post_init__(self) -> None:
         """Validate pipeline configuration."""
@@ -209,7 +247,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         raise ValueError(f"Configuration must be a JSON object, got {type(data)}")
     
     # Validate top-level keys
-    top_level_keys = {"horizon", "timezone", "series", "s3", "artifacts", "outputs", "publish"}
+    top_level_keys = {"horizon", "timezone", "series", "s3", "artifacts", "outputs", "publish", "email"}
     _validate_no_unknown_keys(data, top_level_keys, "top-level")
     
     # Validate horizon
@@ -294,6 +332,24 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             prefix_latest=publish_data["prefix_latest"],
         )
     
+    # Validate and build email config (optional)
+    email_config = None
+    if "email" in data:
+        email_data = data.get("email", {})
+        if not isinstance(email_data, dict):
+            raise ValueError("email must be an object")
+        email_keys = {"provider", "region", "from_email", "to_emails", "subject_template", "body_format", "aws_profile"}
+        _validate_no_unknown_keys(email_data, email_keys, "email")
+        email_config = EmailConfig(
+            provider=email_data["provider"],
+            region=email_data["region"],
+            from_email=email_data["from_email"],
+            to_emails=email_data["to_emails"],
+            subject_template=email_data["subject_template"],
+            body_format=email_data.get("body_format", "text"),
+            aws_profile=email_data.get("aws_profile"),
+        )
+    
     # Build and return pipeline config
     return PipelineConfig(
         horizon=horizon,
@@ -303,5 +359,6 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         artifacts=artifacts_config,
         outputs=outputs_config,
         publish=publish_config,
+        email=email_config,
     )
 
