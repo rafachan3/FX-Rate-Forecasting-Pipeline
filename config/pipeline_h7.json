@@ -22,5 +22,11 @@
   "outputs": {
     "runs_dir": "outputs/runs",
     "latest_dir": "outputs/latest"
+  },
+  "publish": {
+    "bucket": "fx-rate-pipeline-dev",
+    "profile": "fx-gold",
+    "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
+    "prefix_latest": "predictions/{horizon}/latest/"
   }
 }

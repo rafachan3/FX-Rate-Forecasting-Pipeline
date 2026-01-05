@@ -97,6 +97,33 @@ class OutputsConfig:
 
 
 @dataclass
+class PublishConfig:
+    """S3 publishing configuration."""
+    
+    bucket: str
+    profile: str
+    prefix_runs_template: str
+    prefix_latest: str
+    
+    def __post_init__(self) -> None:
+        """Validate publish configuration."""
+        if not self.bucket or not isinstance(self.bucket, str):
+            raise ValueError("publish.bucket must be a non-empty string")
+        if not self.profile or not isinstance(self.profile, str):
+            raise ValueError("publish.profile must be a non-empty string")
+        if not self.prefix_runs_template or not isinstance(self.prefix_runs_template, str):
+            raise ValueError("publish.prefix_runs_template must be a non-empty string")
+        if "{horizon}" not in self.prefix_runs_template:
+            raise ValueError('publish.prefix_runs_template must contain "{horizon}" placeholder')
+        if "{run_date}" not in self.prefix_runs_template:
+            raise ValueError('publish.prefix_runs_template must contain "{run_date}" placeholder')
+        if not self.prefix_latest or not isinstance(self.prefix_latest, str):
+            raise ValueError("publish.prefix_latest must be a non-empty string")
+        if "{horizon}" not in self.prefix_latest:
+            raise ValueError('publish.prefix_latest must contain "{horizon}" placeholder')
+
+
+@dataclass
 class PipelineConfig:
     """Complete pipeline configuration."""
     
@@ -106,6 +133,7 @@ class PipelineConfig:
     s3: S3Config
     artifacts: ArtifactsConfig
     outputs: OutputsConfig
+    publish: PublishConfig | None = None
     
     def __post_init__(self) -> None:
         """Validate pipeline configuration."""
@@ -181,7 +209,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         raise ValueError(f"Configuration must be a JSON object, got {type(data)}")
     
     # Validate top-level keys
-    top_level_keys = {"horizon", "timezone", "series", "s3", "artifacts", "outputs"}
+    top_level_keys = {"horizon", "timezone", "series", "s3", "artifacts", "outputs", "publish"}
     _validate_no_unknown_keys(data, top_level_keys, "top-level")
     
     # Validate horizon
@@ -251,6 +279,21 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         latest_dir=outputs_data["latest_dir"],
     )
     
+    # Validate and build publish config (optional)
+    publish_config = None
+    if "publish" in data:
+        publish_data = data.get("publish", {})
+        if not isinstance(publish_data, dict):
+            raise ValueError("publish must be an object")
+        publish_keys = {"bucket", "profile", "prefix_runs_template", "prefix_latest"}
+        _validate_no_unknown_keys(publish_data, publish_keys, "publish")
+        publish_config = PublishConfig(
+            bucket=publish_data["bucket"],
+            profile=publish_data["profile"],
+            prefix_runs_template=publish_data["prefix_runs_template"],
+            prefix_latest=publish_data["prefix_latest"],
+        )
+    
     # Build and return pipeline config
     return PipelineConfig(
         horizon=horizon,
@@ -259,5 +302,6 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         s3=s3_config,
         artifacts=artifacts_config,
         outputs=outputs_config,
+        publish=publish_config,
     )
 
