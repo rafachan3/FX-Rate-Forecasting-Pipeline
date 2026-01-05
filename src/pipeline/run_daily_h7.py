@@ -15,6 +15,7 @@ from src.pipeline.paths import (
     get_run_manifest_path,
     get_run_predictions_path,
 )
+from src.pipeline.publish_s3 import publish_latest_outputs, publish_run_outputs
 from src.pipeline.run_date import toronto_now_iso, toronto_today
 
 
@@ -45,6 +46,11 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Override models directory. If not provided, uses config.artifacts.dir",
+    )
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="Publish outputs to S3 after local promotion (requires publish config)",
     )
     return parser.parse_args()
 
@@ -167,8 +173,44 @@ def main() -> None:
         ],
     )
     
+    # Publish to S3 (if requested)
+    published_info = ""
+    if args.publish:
+        if config.publish is None:
+            raise ValueError(
+                "--publish flag provided but publish configuration is missing in config file"
+            )
+        
+        # Publish run outputs first
+        publish_run_outputs(
+            run_dir=run_dir,
+            horizon=config.horizon,
+            run_date=run_date,
+            bucket=config.publish.bucket,
+            profile=config.publish.profile,
+            prefix_runs_template=config.publish.prefix_runs_template,
+        )
+        
+        # Then publish latest outputs
+        publish_latest_outputs(
+            latest_dir=config.outputs.latest_dir,
+            horizon=config.horizon,
+            bucket=config.publish.bucket,
+            profile=config.publish.profile,
+            prefix_latest=config.publish.prefix_latest,
+        )
+        
+        # Build published info string
+        runs_prefix = config.publish.prefix_runs_template.format(
+            horizon=config.horizon, run_date=run_date
+        )
+        latest_prefix = config.publish.prefix_latest.format(horizon=config.horizon)
+        published_info = f" published=runs:{runs_prefix},latest:{latest_prefix}"
+    
     # Print single success line
-    print(f"[OK] run_date={run_date} promoted=decision_predictions_h7.parquet,manifest.json")
+    print(
+        f"[OK] run_date={run_date} promoted=decision_predictions_h7.parquet,manifest.json{published_info}"
+    )
 
 
 if __name__ == "__main__":

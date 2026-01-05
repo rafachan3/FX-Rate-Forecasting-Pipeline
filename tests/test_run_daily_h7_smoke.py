@@ -119,6 +119,7 @@ def test_run_daily_h7_smoke(tmp_path: Path):
                             sync=False,
                             run_date=None,
                             models_dir=None,
+                            publish=False,
                         )
                         
                         main()
@@ -155,6 +156,305 @@ def test_run_daily_h7_smoke(tmp_path: Path):
     fixed_output_path = tmp_path / "outputs" / "decision_predictions_h7.parquet"
     # This file should NOT exist because we're using --out with run_dir path
     assert not fixed_output_path.exists()
+
+
+def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
+    """Test that publish functions are called only after outputs exist."""
+    # Create config with publish section
+    config_path = tmp_path / "config.json"
+    runs_dir = tmp_path / "outputs" / "runs"
+    latest_dir = tmp_path / "outputs" / "latest"
+    gold_dir = tmp_path / "data" / "gold"
+    models_dir = tmp_path / "models"
+    
+    gold_path = gold_dir / "FXUSDCAD" / "data.parquet"
+    create_minimal_gold_parquet(gold_path, "FXUSDCAD", n_rows=100)
+    
+    # Create minimal model artifacts
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "logreg_h7.joblib").write_bytes(b"fake model")
+    (models_dir / "features_h7.json").write_text(json.dumps(["feature1", "feature2"]))
+    (models_dir / "metadata_h7.json").write_text(
+        json.dumps({"version": "test", "horizon": 7})
+    )
+    
+    config_data = {
+        "horizon": "h7",
+        "timezone": "America/Toronto",
+        "series": [
+            {"series_id": "FXUSDCAD", "gold_local_path": str(gold_path)},
+        ],
+        "s3": {
+            "bucket": "test-bucket",
+            "prefix_template": "gold/source=BoC/series={series_id}/",
+            "filename": "data.parquet",
+            "profile": "fx-gold",
+        },
+        "artifacts": {
+            "dir": str(models_dir),
+            "model_file": "logreg_h7.joblib",
+            "features_file": "features_h7.json",
+            "metadata_file": "metadata_h7.json",
+        },
+        "outputs": {
+            "runs_dir": str(runs_dir),
+            "latest_dir": str(latest_dir),
+        },
+        "publish": {
+            "bucket": "fx-rate-pipeline-dev",
+            "profile": "fx-gold",
+            "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
+            "prefix_latest": "predictions/{horizon}/latest/",
+        },
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(config_data, f)
+    
+    # Mock inference subprocess to create predictions directly
+    run_date = "2024-01-15"
+    run_predictions_path = runs_dir / run_date / "decision_predictions_h7.parquet"
+    
+    def mock_inference_subprocess(cmd, **kwargs):
+        # Create predictions file directly
+        create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
+        return MagicMock(returncode=0, stderr="")
+    
+    # Mock publish functions
+    with patch("src.pipeline.run_daily_h7.publish_run_outputs") as mock_publish_run:
+        with patch("src.pipeline.run_daily_h7.publish_latest_outputs") as mock_publish_latest:
+            # Mock toronto_today to return fixed date
+            with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+                mock_today.return_value.isoformat.return_value = run_date
+                
+                with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+                    mock_now.return_value = "2024-01-15T14:30:00-05:00"
+                    
+                    with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                        # Mock get_git_sha
+                        with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                            mock_git.return_value = "a" * 40
+                            
+                            # Run main with mocked args and --publish flag
+                            with patch(
+                                "src.pipeline.run_daily_h7.parse_args"
+                            ) as mock_args:
+                                mock_args.return_value = MagicMock(
+                                    config=str(config_path),
+                                    sync=False,
+                                    run_date=None,
+                                    models_dir=None,
+                                    publish=True,  # Enable publish
+                                )
+                                
+                                main()
+            
+            # Verify publish_run_outputs was called after outputs exist
+            assert mock_publish_run.called
+            call_args = mock_publish_run.call_args
+            assert call_args.kwargs["run_dir"] == str(runs_dir / run_date)
+            assert call_args.kwargs["horizon"] == "h7"
+            assert call_args.kwargs["run_date"] == run_date
+            assert call_args.kwargs["bucket"] == "fx-rate-pipeline-dev"
+            assert call_args.kwargs["profile"] == "fx-gold"
+            
+            # Verify publish_latest_outputs was called after publish_run_outputs
+            assert mock_publish_latest.called
+            call_args = mock_publish_latest.call_args
+            assert call_args.kwargs["latest_dir"] == str(latest_dir)
+            assert call_args.kwargs["horizon"] == "h7"
+            assert call_args.kwargs["bucket"] == "fx-rate-pipeline-dev"
+            assert call_args.kwargs["profile"] == "fx-gold"
+            
+            # Verify publish_run was called before publish_latest
+            assert mock_publish_run.call_count == 1
+            assert mock_publish_latest.call_count == 1
+
+
+def test_run_daily_h7_publish_run_failure_prevents_latest_publish(tmp_path: Path):
+    """Test that if publish_run fails, publish_latest is not called."""
+    # Create config with publish section
+    config_path = tmp_path / "config.json"
+    runs_dir = tmp_path / "outputs" / "runs"
+    latest_dir = tmp_path / "outputs" / "latest"
+    gold_dir = tmp_path / "data" / "gold"
+    models_dir = tmp_path / "models"
+    
+    gold_path = gold_dir / "FXUSDCAD" / "data.parquet"
+    create_minimal_gold_parquet(gold_path, "FXUSDCAD", n_rows=100)
+    
+    # Create minimal model artifacts
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "logreg_h7.joblib").write_bytes(b"fake model")
+    (models_dir / "features_h7.json").write_text(json.dumps(["feature1", "feature2"]))
+    (models_dir / "metadata_h7.json").write_text(
+        json.dumps({"version": "test", "horizon": 7})
+    )
+    
+    config_data = {
+        "horizon": "h7",
+        "timezone": "America/Toronto",
+        "series": [
+            {"series_id": "FXUSDCAD", "gold_local_path": str(gold_path)},
+        ],
+        "s3": {
+            "bucket": "test-bucket",
+            "prefix_template": "gold/source=BoC/series={series_id}/",
+            "filename": "data.parquet",
+            "profile": "fx-gold",
+        },
+        "artifacts": {
+            "dir": str(models_dir),
+            "model_file": "logreg_h7.joblib",
+            "features_file": "features_h7.json",
+            "metadata_file": "metadata_h7.json",
+        },
+        "outputs": {
+            "runs_dir": str(runs_dir),
+            "latest_dir": str(latest_dir),
+        },
+        "publish": {
+            "bucket": "fx-rate-pipeline-dev",
+            "profile": "fx-gold",
+            "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
+            "prefix_latest": "predictions/{horizon}/latest/",
+        },
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(config_data, f)
+    
+    # Mock inference subprocess to create predictions directly
+    run_date = "2024-01-15"
+    run_predictions_path = runs_dir / run_date / "decision_predictions_h7.parquet"
+    
+    def mock_inference_subprocess(cmd, **kwargs):
+        # Create predictions file directly
+        create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
+        return MagicMock(returncode=0, stderr="")
+    
+    # Mock publish_run_outputs to fail
+    with patch("src.pipeline.run_daily_h7.publish_run_outputs") as mock_publish_run:
+        mock_publish_run.side_effect = RuntimeError("S3 upload failed")
+        
+        with patch("src.pipeline.run_daily_h7.publish_latest_outputs") as mock_publish_latest:
+            # Mock toronto_today to return fixed date
+            with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+                mock_today.return_value.isoformat.return_value = run_date
+                
+                with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+                    mock_now.return_value = "2024-01-15T14:30:00-05:00"
+                    
+                    with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                        # Mock get_git_sha
+                        with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                            mock_git.return_value = "a" * 40
+                            
+                            # Run main with mocked args and --publish flag
+                            with patch(
+                                "src.pipeline.run_daily_h7.parse_args"
+                            ) as mock_args:
+                                mock_args.return_value = MagicMock(
+                                    config=str(config_path),
+                                    sync=False,
+                                    run_date=None,
+                                    models_dir=None,
+                                    publish=True,  # Enable publish
+                                )
+                                
+                                with pytest.raises(RuntimeError, match="S3 upload failed"):
+                                    main()
+            
+            # Verify publish_run_outputs was called
+            assert mock_publish_run.called
+            
+            # Verify publish_latest_outputs was NOT called (because publish_run failed)
+            assert not mock_publish_latest.called
+
+
+def test_run_daily_h7_publish_without_config_raises_error(tmp_path: Path):
+    """Test that --publish flag without publish config raises ValueError."""
+    # Create config WITHOUT publish section
+    config_path = tmp_path / "config.json"
+    runs_dir = tmp_path / "outputs" / "runs"
+    latest_dir = tmp_path / "outputs" / "latest"
+    gold_dir = tmp_path / "data" / "gold"
+    models_dir = tmp_path / "models"
+    
+    gold_path = gold_dir / "FXUSDCAD" / "data.parquet"
+    create_minimal_gold_parquet(gold_path, "FXUSDCAD", n_rows=100)
+    
+    # Create minimal model artifacts
+    models_dir.mkdir(parents=True, exist_ok=True)
+    (models_dir / "logreg_h7.joblib").write_bytes(b"fake model")
+    (models_dir / "features_h7.json").write_text(json.dumps(["feature1", "feature2"]))
+    (models_dir / "metadata_h7.json").write_text(
+        json.dumps({"version": "test", "horizon": 7})
+    )
+    
+    config_data = {
+        "horizon": "h7",
+        "timezone": "America/Toronto",
+        "series": [
+            {"series_id": "FXUSDCAD", "gold_local_path": str(gold_path)},
+        ],
+        "s3": {
+            "bucket": "test-bucket",
+            "prefix_template": "gold/source=BoC/series={series_id}/",
+            "filename": "data.parquet",
+            "profile": "fx-gold",
+        },
+        "artifacts": {
+            "dir": str(models_dir),
+            "model_file": "logreg_h7.joblib",
+            "features_file": "features_h7.json",
+            "metadata_file": "metadata_h7.json",
+        },
+        "outputs": {
+            "runs_dir": str(runs_dir),
+            "latest_dir": str(latest_dir),
+        },
+        # No publish section
+    }
+    
+    with open(config_path, "w") as f:
+        json.dump(config_data, f)
+    
+    # Mock inference subprocess to create predictions directly
+    run_date = "2024-01-15"
+    run_predictions_path = runs_dir / run_date / "decision_predictions_h7.parquet"
+    
+    def mock_inference_subprocess(cmd, **kwargs):
+        # Create predictions file directly
+        create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
+        return MagicMock(returncode=0, stderr="")
+    
+    # Mock toronto_today to return fixed date
+    with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+        mock_today.return_value.isoformat.return_value = run_date
+        
+        with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+            mock_now.return_value = "2024-01-15T14:30:00-05:00"
+            
+            with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                # Mock get_git_sha
+                with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                    mock_git.return_value = "a" * 40
+                    
+                    # Run main with mocked args and --publish flag
+                    with patch("src.pipeline.run_daily_h7.parse_args") as mock_args:
+                        mock_args.return_value = MagicMock(
+                            config=str(config_path),
+                            sync=False,
+                            run_date=None,
+                            models_dir=None,
+                            publish=True,  # Enable publish but no config
+                        )
+                        
+                        with pytest.raises(
+                            ValueError, match="publish configuration is missing"
+                        ):
+                            main()
 
 
 def test_run_daily_h7_sync_failure_includes_aws_command(tmp_path: Path):
@@ -207,6 +507,7 @@ def test_run_daily_h7_sync_failure_includes_aws_command(tmp_path: Path):
                     sync=True,  # Enable sync
                     run_date=None,
                     models_dir=None,
+                    publish=False,
                 )
                 
                 with pytest.raises(RuntimeError) as exc_info:
@@ -273,6 +574,7 @@ def test_run_daily_h7_inference_failure_leaves_latest_unchanged(tmp_path: Path):
                     sync=False,
                     run_date=None,
                     models_dir=None,
+                    publish=False,
                 )
                 
                 with pytest.raises(RuntimeError, match="Inference failed"):
