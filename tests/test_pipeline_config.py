@@ -46,6 +46,7 @@ def test_horizon_mismatch_raises_value_error():
                 "bucket": "test-bucket",
                 "prefix_template": "gold/source=BoC/series={series_id}/",
                 "filename": "data.parquet",
+                "profile": "fx-gold",
             },
             "artifacts": {
                 "dir": "models",
@@ -77,6 +78,7 @@ def test_timezone_mismatch_raises_value_error():
                 "bucket": "test-bucket",
                 "prefix_template": "gold/source=BoC/series={series_id}/",
                 "filename": "data.parquet",
+                "profile": "fx-gold",
             },
             "artifacts": {
                 "dir": "models",
@@ -108,6 +110,7 @@ def test_prefix_template_missing_series_id_raises_value_error():
                 "bucket": "test-bucket",
                 "prefix_template": "gold/source=BoC/",
                 "filename": "data.parquet",
+                "profile": "fx-gold",
             },
             "artifacts": {
                 "dir": "models",
@@ -139,6 +142,7 @@ def test_unknown_top_level_key_raises_value_error():
                 "bucket": "test-bucket",
                 "prefix_template": "gold/source=BoC/series={series_id}/",
                 "filename": "data.parquet",
+                "profile": "fx-gold",
             },
             "artifacts": {
                 "dir": "models",
@@ -171,6 +175,7 @@ def test_unknown_nested_key_raises_value_error():
                 "bucket": "test-bucket",
                 "prefix_template": "gold/source=BoC/series={series_id}/",
                 "filename": "data.parquet",
+                "profile": "fx-gold",
             },
             "artifacts": {
                 "dir": "models",
@@ -227,8 +232,10 @@ def test_s3_config_validation():
         bucket="test-bucket",
         prefix_template="gold/source=BoC/series={series_id}/",
         filename="data.parquet",
+        profile="fx-gold",
     )
     assert s3.bucket == "test-bucket"
+    assert s3.profile == "fx-gold"
     
     # Missing {series_id} in prefix_template
     with pytest.raises(ValueError, match='prefix_template must contain "{series_id}"'):
@@ -236,6 +243,7 @@ def test_s3_config_validation():
             bucket="test-bucket",
             prefix_template="gold/source=BoC/",
             filename="data.parquet",
+            profile="fx-gold",
         )
     
     # Filename doesn't end with .parquet
@@ -244,6 +252,16 @@ def test_s3_config_validation():
             bucket="test-bucket",
             prefix_template="gold/source=BoC/series={series_id}/",
             filename="data.json",
+            profile="fx-gold",
+        )
+    
+    # Empty profile
+    with pytest.raises(ValueError, match="s3.profile must be a non-empty string"):
+        S3Config(
+            bucket="test-bucket",
+            prefix_template="gold/source=BoC/series={series_id}/",
+            filename="data.parquet",
+            profile="",
         )
 
 

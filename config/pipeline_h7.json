@@ -10,7 +10,8 @@
   "s3": {
     "bucket": "fx-rate-pipeline-dev",
     "prefix_template": "gold/source=BoC/series={series_id}/",
-    "filename": "data.parquet"
+    "filename": "data.parquet",
+    "profile": "fx-gold"
   },
   "artifacts": {
     "dir": "models",
@@ -23,4 +24,3 @@
     "latest_dir": "outputs/latest"
   }
 }
-
