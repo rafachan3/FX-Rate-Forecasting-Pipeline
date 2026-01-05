@@ -349,10 +349,10 @@ def parse_args() -> argparse.Namespace:
         help="Root directory containing Gold parquet files (e.g., data/gold)",
     )
     parser.add_argument(
-        "--out-path",
+        "--out",
         type=Path,
-        required=True,
-        help="Output path for decision_predictions_h7.parquet",
+        default=Path("outputs/decision_predictions_h7.parquet"),
+        help="Output path for decision_predictions_h7.parquet (default: outputs/decision_predictions_h7.parquet)",
     )
     parser.add_argument(
         "--model-dir",
@@ -392,7 +392,7 @@ def main() -> None:
     run_inference(
         gold_root=args.gold_root,
         model_dir=args.model_dir,
-        out_path=args.out_path,
+        out_path=args.out,
         threshold=args.threshold,
         glob_pattern=args.glob_pattern,
         dry_run=args.dry_run,

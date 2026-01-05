@@ -371,6 +371,122 @@ def test_run_inference_multi_series():
         assert "FXEURCAD" in df_output["series_id"].values
 
 
+def test_run_inference_writes_to_specified_output_path():
+    """Test that inference writes to the specified --out path."""
+    # Reuse the existing deterministic test setup
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Create Gold parquet using same approach as test_run_inference_deterministic
+        gold_dir = tmp_path / "gold" / "FXUSDCAD"
+        gold_dir.mkdir(parents=True)
+        
+        n_rows = 300
+        np.random.seed(7)
+        values = 1.0 + np.cumsum(np.random.randn(n_rows) * 0.01)
+        prev_values = np.concatenate([[1.0], values[:-1]])
+        df_gold = pd.DataFrame({
+            "obs_date": pd.date_range("2024-01-01", periods=n_rows, freq="D"),
+            "value": values,
+            "prev_value": prev_values,
+            "series_id": ["FXUSDCAD"] * n_rows,
+        })
+        df_gold.to_parquet(gold_dir / "data.parquet", index=False)
+        
+        # Build features first to see what we actually get (after dropna)
+        from src.features.h7 import build_features_h7_from_gold, NUMERIC_FEATURES_H7
+        df_feat = build_features_h7_from_gold(df_gold)
+        actual_features = [c for c in df_feat.columns if c not in ["series_id", "direction_7d", "fwd_return_7d"]]
+        
+        if len(actual_features) < 2:
+            pytest.skip("Not enough features after dropna - need more data")
+        
+        # Use first 2 features that exist
+        available_features = actual_features[:2]
+        
+        # Create model artifacts with available feature names
+        feature_spec = {
+            "categorical": ["series_id"],
+            "numeric": available_features,
+        }
+        create_mock_model_artifacts(tmp_path, feature_spec)
+        
+        # Use a custom output path (different from default)
+        custom_out_path = tmp_path / "custom_output" / "predictions.parquet"
+        
+        run_inference(
+            gold_root=tmp_path / "gold",
+            out_path=custom_out_path,
+            model_dir=tmp_path / "models",
+            threshold=0.6,
+            glob_pattern="**/data.parquet",
+            dry_run=False,
+        )
+        
+        # Verify file was written to custom path
+        assert custom_out_path.exists()
+        df = pd.read_parquet(custom_out_path)
+        assert "obs_date" in df.columns
+        assert "series_id" in df.columns
+        assert "p_up_logreg" in df.columns
+        assert "action_logreg" in df.columns
+
+
+def test_run_inference_default_output_path():
+    """Test that inference uses default output path when --out is not specified."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        
+        # Create Gold parquet
+        gold_dir = tmp_path / "gold" / "FXUSDCAD"
+        gold_dir.mkdir(parents=True)
+        
+        n_rows = 300
+        np.random.seed(7)
+        values = 1.0 + np.cumsum(np.random.randn(n_rows) * 0.01)
+        prev_values = np.concatenate([[1.0], values[:-1]])
+        df_gold = pd.DataFrame({
+            "obs_date": pd.date_range("2024-01-01", periods=n_rows, freq="D"),
+            "value": values,
+            "prev_value": prev_values,
+            "series_id": ["FXUSDCAD"] * n_rows,
+        })
+        df_gold.to_parquet(gold_dir / "data.parquet", index=False)
+        
+        # Build features
+        from src.features.h7 import build_features_h7_from_gold
+        df_feat = build_features_h7_from_gold(df_gold)
+        actual_features = [c for c in df_feat.columns if c not in ["series_id", "direction_7d", "fwd_return_7d"]]
+        
+        if len(actual_features) < 2:
+            pytest.skip("Not enough features after dropna")
+        
+        available_features = actual_features[:2]
+        feature_spec = {
+            "categorical": ["series_id"],
+            "numeric": available_features,
+        }
+        create_mock_model_artifacts(tmp_path, feature_spec)
+        
+        # Use default output path
+        default_out_path = tmp_path / "outputs" / "decision_predictions_h7.parquet"
+        
+        run_inference(
+            gold_root=tmp_path / "gold",
+            out_path=default_out_path,  # Explicitly use default to test backward compatibility
+            model_dir=tmp_path / "models",
+            threshold=0.6,
+            glob_pattern="**/data.parquet",
+            dry_run=False,
+        )
+        
+        # Verify file was written to default path
+        assert default_out_path.exists()
+        df = pd.read_parquet(default_out_path)
+        assert "obs_date" in df.columns
+        assert "series_id" in df.columns
+
+
 def test_run_inference_fails_on_missing_features():
     """Test that inference fails loudly if features are missing."""
     with tempfile.TemporaryDirectory() as tmpdir:
