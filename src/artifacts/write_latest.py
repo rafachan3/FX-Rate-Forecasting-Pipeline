@@ -10,6 +10,12 @@ from typing import Optional
 
 import pandas as pd
 
+from src.signals.policy import (
+    apply_threshold_policy,
+    confidence_from_p,
+    normalize_label,
+)
+
 
 def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_")
@@ -46,11 +52,13 @@ def _safe_float(x) -> Optional[float]:
         return None
 
 
-def _derive_action(p: Optional[float], threshold: float) -> Optional[str]:
-    if p is None:
+def _safe_str(x) -> Optional[str]:
+    try:
+        if pd.isna(x):
+            return None
+        return str(x).strip()
+    except Exception:
         return None
-    # Simple directional signal for UI (you can change labels later)
-    return "UP" if p >= threshold else "DOWN"
 
 
 @dataclass(frozen=True)
@@ -62,9 +70,13 @@ class LatestRow:
     p_up_logreg: Optional[float]
     p_up_tree: Optional[float]
 
-    # optional, derived
+    # optional, derived (backward compat)
     action_logreg: Optional[str]
     action_tree: Optional[str]
+
+    # primary decision and confidence (if available)
+    decision: Optional[str]
+    confidence: Optional[float]
 
 
 @dataclass(frozen=True)
@@ -92,11 +104,15 @@ def build_latest(
     df = pd.read_parquet(path)
     df = _ensure_datetime_index_or_col(df)
 
+    # Check for richer schema: decision and confidence columns
+    has_decision = "decision" in df.columns
+    has_confidence = "confidence" in df.columns
+
     # Identify probability columns (your current schema)
     p_logreg = "p_up_logreg" if "p_up_logreg" in df.columns else None
     p_tree = "p_up_tree" if "p_up_tree" in df.columns else None
 
-    # If a “richer” schema exists, support it too
+    # If a "richer" schema exists, support it too
     # (for future: p_up_raw / p_up_cal, etc.)
     if p_logreg is None and "p_up_raw" in df.columns:
         p_logreg = "p_up_raw"
@@ -108,14 +124,65 @@ def build_latest(
         pl = _safe_float(r[p_logreg]) if p_logreg else None
         pt = _safe_float(r[p_tree]) if p_tree else None
 
+        # Primary decision and confidence: use from columns if available
+        decision = None
+        confidence = None
+
+        if has_decision:
+            decision_raw = _safe_str(r["decision"])
+            decision = normalize_label(decision_raw) if decision_raw else None
+
+        if has_confidence:
+            confidence = _safe_float(r["confidence"])
+
+        # If decision/confidence not in input, derive from probabilities
+        if decision is None and (pl is not None or pt is not None):
+            # Use logreg if available, else tree, else None
+            p_primary = pl if pl is not None else pt
+            if p_primary is not None:
+                # Apply threshold policy with SIDEWAYS band
+                decision_series = apply_threshold_policy(
+                    pd.Series([p_primary]), t=threshold
+                )
+                decision = decision_series.iloc[0]
+
+                # Compute confidence
+                conf_series = confidence_from_p(
+                    pd.Series([p_primary]), t=threshold
+                )
+                confidence = conf_series.iloc[0]
+
+        # Backward compat: derive action_logreg and action_tree
+        # Use old simple threshold logic for backward compat
+        action_logreg = None
+        action_tree = None
+
+        if pl is not None:
+            if pl >= threshold:
+                action_logreg = "UP"
+            elif pl <= (1.0 - threshold):
+                action_logreg = "DOWN"
+            else:
+                action_logreg = "SIDEWAYS"
+
+        if pt is not None:
+            if pt >= threshold:
+                action_tree = "UP"
+            elif pt <= (1.0 - threshold):
+                action_tree = "DOWN"
+            else:
+                action_tree = "SIDEWAYS"
+
         rows.append(
             LatestRow(
                 obs_date=pd.Timestamp(r["obs_date"]).date().isoformat(),
                 pair=pair,
                 p_up_logreg=pl,
                 p_up_tree=pt,
-                action_logreg=_derive_action(pl, threshold) if pl is not None else None,
-                action_tree=_derive_action(pt, threshold) if pt is not None else None,
+                action_logreg=action_logreg,
+                action_tree=action_tree,
+                decision=decision,
+                confidence=confidence,
             )
         )
 
