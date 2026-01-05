@@ -74,23 +74,21 @@ def test_load_gold_parquets():
         assert "FXEURCAD" in series_ids
 
 
-def test_build_features_h7_raises_not_implemented():
-    """Test that feature builder raises NotImplementedError (don't guess features)."""
+def test_build_features_h7_requires_prev_value():
+    """Test that feature builder requires prev_value column (Gold contract)."""
     df = pd.DataFrame({
         "obs_date": pd.date_range("2024-01-01", periods=5, freq="D"),
         "series_id": ["FXUSDCAD"] * 5,
         "value": [1.0, 1.1, 1.2, 1.3, 1.4],
     })
     
-    with pytest.raises(NotImplementedError) as exc_info:
+    # Should raise ValueError for missing prev_value
+    with pytest.raises(ValueError, match="Missing columns.*prev_value"):
         build_features_h7_from_gold(df)
-    
-    # Verify error message mentions notebook
-    assert "notebooks/03_direction_feature_engineering.ipynb" in str(exc_info.value)
 
 
-def test_export_global_model_raises_not_implemented():
-    """Test that export raises NotImplementedError when features not implemented."""
+def test_export_global_model_requires_prev_value():
+    """Test that export fails gracefully when Gold contract violated (missing prev_value)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         
@@ -98,15 +96,15 @@ def test_export_global_model_raises_not_implemented():
         series_dir = tmp_path / "FXUSDCAD"
         series_dir.mkdir()
         
-        # Create minimal parquet
+        # Create minimal parquet without prev_value (violates Gold contract)
         df = pd.DataFrame({
             "obs_date": pd.date_range("2024-01-01", periods=5, freq="D"),
             "value": np.random.randn(5),
         })
         df.to_parquet(series_dir / "data.parquet")
         
-        # Export should raise NotImplementedError
-        with pytest.raises(NotImplementedError):
+        # Export should raise ValueError because prev_value is missing
+        with pytest.raises(ValueError, match="No feature dataframes created"):
             export_global_model(
                 gold_root=tmp_path,
                 out_dir=tmp_path / "models",
