@@ -1,0 +1,81 @@
+name: H7 Daily Pipeline
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (validate config, print plan, no execution)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: h7-daily
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-pipeline:
+    name: Run H7 Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PREDICTIONS }}
+          aws-region: us-east-2
+
+      - name: Who am I (AWS)
+        run: aws sts get-caller-identity
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Print versions
+        run: |
+          python --version
+          pip --version
+
+      - name: Run unit tests
+        run: |
+          python -m pytest -q
+
+      - name: Run pipeline
+        id: pipeline
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python -m src.pipeline.run_daily_h7 --config config/pipeline_h7.json --sync --publish --email --dry-run
+          else
+            python -m src.pipeline.run_daily_h7 --config config/pipeline_h7.json --sync --publish --email
+          fi
+
+      - name: Upload outputs artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs-${{ github.run_id }}
+          path: |
+            outputs/runs/**
+            outputs/latest/**
+          retention-days: 7
+          if-no-files-found: ignore
