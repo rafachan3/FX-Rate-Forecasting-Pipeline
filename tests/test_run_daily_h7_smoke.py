@@ -121,6 +121,7 @@ def test_run_daily_h7_smoke(tmp_path: Path):
                             models_dir=None,
                             publish=False,
                             email=False,
+                            dry_run=False,
                         )
                         
                         main()
@@ -247,6 +248,7 @@ def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
                                     models_dir=None,
                                     publish=True,  # Enable publish
                                     email=False,
+                                    dry_run=False,
                                 )
                                 
                                 main()
@@ -363,6 +365,7 @@ def test_run_daily_h7_publish_run_failure_prevents_latest_publish(tmp_path: Path
                                     models_dir=None,
                                     publish=True,  # Enable publish
                                     email=False,
+                                    dry_run=False,
                                 )
                                 
                                 with pytest.raises(RuntimeError, match="S3 upload failed"):
@@ -452,6 +455,8 @@ def test_run_daily_h7_publish_without_config_raises_error(tmp_path: Path):
                             run_date=None,
                             models_dir=None,
                             publish=True,  # Enable publish but no config
+                            email=False,
+                            dry_run=False,
                         )
                         
                         with pytest.raises(
@@ -550,6 +555,7 @@ def test_run_daily_h7_email_sends_after_outputs_exist(tmp_path: Path):
                                 models_dir=None,
                                 publish=False,
                                 email=True,  # Enable email
+                                dry_run=False,
                             )
                             
                             main()
@@ -642,6 +648,7 @@ def test_run_daily_h7_email_without_config_raises_error(tmp_path: Path):
                             models_dir=None,
                             publish=False,
                             email=True,  # Enable email but no config
+                            dry_run=False,
                         )
                         
                         with pytest.raises(
@@ -695,20 +702,22 @@ def test_run_daily_h7_sync_failure_includes_aws_command(tmp_path: Path):
         
         with patch("subprocess.run", side_effect=mock_sync_failure):
             with patch("src.pipeline.run_daily_h7.parse_args") as mock_args:
-                mock_args.return_value = MagicMock(
-                    config=str(config_path),
-                    sync=True,  # Enable sync
-                    run_date=None,
-                    models_dir=None,
-                    publish=False,
-                )
-                
-                with pytest.raises(RuntimeError) as exc_info:
-                    main()
-                
-                # Verify error message includes AWS command with profile
-                error_msg = str(exc_info.value)
-                assert "--profile fx-gold" in error_msg or "cmd=" in error_msg
+                    mock_args.return_value = MagicMock(
+                        config=str(config_path),
+                        sync=True,  # Enable sync
+                        run_date=None,
+                        models_dir=None,
+                        publish=False,
+                        email=False,
+                        dry_run=False,
+                    )
+                    
+                    with pytest.raises(RuntimeError) as exc_info:
+                        main()
+                    
+                    # Verify error message includes AWS command with profile
+                    error_msg = str(exc_info.value)
+                    assert "--profile fx-gold" in error_msg or "cmd=" in error_msg
 
 
 def test_run_daily_h7_inference_failure_leaves_latest_unchanged(tmp_path: Path):
@@ -768,6 +777,8 @@ def test_run_daily_h7_inference_failure_leaves_latest_unchanged(tmp_path: Path):
                     run_date=None,
                     models_dir=None,
                     publish=False,
+                    email=False,
+                    dry_run=False,
                 )
                 
                 with pytest.raises(RuntimeError, match="Inference failed"):
