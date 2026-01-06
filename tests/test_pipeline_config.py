@@ -347,14 +347,23 @@ def test_publish_config_validation():
             prefix_latest="predictions/{horizon}/latest/",
         )
     
-    # Empty profile
-    with pytest.raises(ValueError, match="publish.profile must be a non-empty string"):
+    # Empty profile string (not None)
+    with pytest.raises(ValueError, match="publish.profile must be None or a non-empty string"):
         PublishConfig(
             bucket="test-bucket",
             profile="",
             prefix_runs_template="predictions/{horizon}/runs/{run_date}/",
             prefix_latest="predictions/{horizon}/latest/",
         )
+    
+    # None profile is valid
+    publish_none = PublishConfig(
+        bucket="test-bucket",
+        profile=None,
+        prefix_runs_template="predictions/{horizon}/runs/{run_date}/",
+        prefix_latest="predictions/{horizon}/latest/",
+    )
+    assert publish_none.profile is None
 
 
 def test_load_config_with_publish():

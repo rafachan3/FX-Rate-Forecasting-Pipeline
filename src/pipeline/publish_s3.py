@@ -19,7 +19,7 @@ def s3_uri(bucket: str, key: str) -> str:
     return f"s3://{bucket}/{key}"
 
 
-def aws_s3_cp(local_path: str | Path, bucket: str, key: str, profile: str) -> None:
+def aws_s3_cp(local_path: str | Path, bucket: str, key: str, profile: str | None = None) -> None:
     """
     Upload a local file to S3 using AWS CLI.
     
@@ -27,7 +27,7 @@ def aws_s3_cp(local_path: str | Path, bucket: str, key: str, profile: str) -> No
         local_path: Local file path to upload
         bucket: S3 bucket name
         key: S3 key (path within bucket)
-        profile: AWS profile name
+        profile: AWS profile name (optional; if None, uses ambient credentials)
         
     Raises:
         RuntimeError: If AWS CLI command fails, including full command and stderr
@@ -44,10 +44,12 @@ def aws_s3_cp(local_path: str | Path, bucket: str, key: str, profile: str) -> No
         "cp",
         str(local_path_obj),
         s3_dest,
-        "--profile",
-        profile,
         "--only-show-errors",
     ]
+    
+    # Only add --profile if provided
+    if profile:
+        cmd.extend(["--profile", profile])
     
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     
@@ -66,7 +68,7 @@ def publish_run_outputs(
     horizon: str,
     run_date: str,
     bucket: str,
-    profile: str,
+    profile: str | None,
     prefix_runs_template: str,
 ) -> None:
     """
@@ -111,7 +113,7 @@ def publish_latest_outputs(
     latest_dir: str | Path,
     horizon: str,
     bucket: str,
-    profile: str,
+    profile: str | None,
     prefix_latest: str,
 ) -> None:
     """

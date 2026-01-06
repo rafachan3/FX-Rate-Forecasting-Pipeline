@@ -101,7 +101,7 @@ class PublishConfig:
     """S3 publishing configuration."""
     
     bucket: str
-    profile: str
+    profile: str | None
     prefix_runs_template: str
     prefix_latest: str
     
@@ -109,8 +109,8 @@ class PublishConfig:
         """Validate publish configuration."""
         if not self.bucket or not isinstance(self.bucket, str):
             raise ValueError("publish.bucket must be a non-empty string")
-        if not self.profile or not isinstance(self.profile, str):
-            raise ValueError("publish.profile must be a non-empty string")
+        if self.profile is not None and (not isinstance(self.profile, str) or not self.profile):
+            raise ValueError("publish.profile must be None or a non-empty string")
         if not self.prefix_runs_template or not isinstance(self.prefix_runs_template, str):
             raise ValueError("publish.prefix_runs_template must be a non-empty string")
         if "{horizon}" not in self.prefix_runs_template:
@@ -325,9 +325,13 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             raise ValueError("publish must be an object")
         publish_keys = {"bucket", "profile", "prefix_runs_template", "prefix_latest"}
         _validate_no_unknown_keys(publish_data, publish_keys, "publish")
+        # Handle null profile (JSON null becomes None in Python)
+        profile_value = publish_data.get("profile")
+        if profile_value is None:
+            profile_value = None
         publish_config = PublishConfig(
             bucket=publish_data["bucket"],
-            profile=publish_data["profile"],
+            profile=profile_value,
             prefix_runs_template=publish_data["prefix_runs_template"],
             prefix_latest=publish_data["prefix_latest"],
         )

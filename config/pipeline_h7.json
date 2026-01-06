@@ -25,7 +25,7 @@
   },
   "publish": {
     "bucket": "fx-rate-pipeline-dev",
-    "profile": "fx-gold",
+    "profile": null,
     "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
     "prefix_latest": "predictions/{horizon}/latest/"
   },
@@ -36,6 +36,6 @@
     "to_emails": ["YOUR_VERIFIED_RECIPIENT@example.com"],
     "subject_template": "[FX] {horizon} latest — {run_date}",
     "body_format": "text",
-    "aws_profile": "fx-gold"
+    "aws_profile": null
   }
 }

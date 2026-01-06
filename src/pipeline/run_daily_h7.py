@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Send email notification after promotion (requires email config)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate config and print planned actions without executing (no writes/uploads/emails)",
+    )
     return parser.parse_args()
 
 
@@ -91,6 +96,55 @@ def main() -> None:
         run_date = args.run_date
     else:
         run_date = toronto_today().isoformat()
+    
+    # Dry-run mode: validate and print planned actions, then exit
+    if args.dry_run:
+        print("[DRY RUN] Configuration validated successfully")
+        print(f"  Run date: {run_date}")
+        print(f"  Horizon: {config.horizon}")
+        print(f"  Series: {[s.series_id for s in config.series]}")
+        print(f"  Models directory: {args.models_dir if args.models_dir else config.artifacts.dir}")
+        print(f"  Outputs:")
+        print(f"    Runs directory: {config.outputs.runs_dir}/{run_date}/")
+        print(f"    Latest directory: {config.outputs.latest_dir}/")
+        
+        if args.sync:
+            print(f"  Sync: Enabled (would sync from S3)")
+        else:
+            print(f"  Sync: Disabled")
+        
+        if args.publish:
+            if config.publish is None:
+                print("  Publish: ERROR - publish config missing")
+            else:
+                runs_prefix = config.publish.prefix_runs_template.format(
+                    horizon=config.horizon, run_date=run_date
+                )
+                latest_prefix = config.publish.prefix_latest.format(horizon=config.horizon)
+                print(f"  Publish: Enabled")
+                print(f"    Bucket: {config.publish.bucket}")
+                print(f"    Profile: {config.publish.profile if config.publish.profile else '(ambient credentials)'}")
+                print(f"    Runs prefix: s3://{config.publish.bucket}/{runs_prefix}")
+                print(f"    Latest prefix: s3://{config.publish.bucket}/{latest_prefix}")
+        else:
+            print(f"  Publish: Disabled")
+        
+        if args.email:
+            if config.email is None:
+                print("  Email: ERROR - email config missing")
+            else:
+                print(f"  Email: Enabled")
+                print(f"    From: {config.email.from_email}")
+                print(f"    To: {', '.join(config.email.to_emails)}")
+                print(f"    Region: {config.email.region}")
+                print(f"    Profile: {config.email.aws_profile if config.email.aws_profile else '(ambient credentials)'}")
+                subject = build_email_subject(config.email, config.horizon, run_date)
+                print(f"    Subject: {subject}")
+        else:
+            print(f"  Email: Disabled")
+        
+        print("\n[DRY RUN] No files written, no S3 uploads, no emails sent. Exiting.")
+        return
     
     # Get run timestamp
     run_timestamp = toronto_now_iso()
