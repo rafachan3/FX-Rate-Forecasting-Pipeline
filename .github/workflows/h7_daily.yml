@@ -1,3 +1,5 @@
+# touch: force workflow re-index
+
 name: H7 Daily Pipeline
 
 on:
