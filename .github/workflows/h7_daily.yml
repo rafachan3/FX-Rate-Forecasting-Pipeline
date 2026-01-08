@@ -2,7 +2,7 @@
 
 name: H7 Daily Pipeline
 
-on:
+'on':
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
