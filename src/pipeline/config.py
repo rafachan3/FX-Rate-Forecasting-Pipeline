@@ -29,7 +29,7 @@ class S3Config:
     bucket: str
     prefix_template: str
     filename: str
-    profile: str
+    profile: str | None = None
     
     def __post_init__(self) -> None:
         """Validate S3 configuration."""
@@ -43,8 +43,8 @@ class S3Config:
             raise ValueError("filename must be a non-empty string")
         if not self.filename.endswith(".parquet"):
             raise ValueError('filename must end with ".parquet"')
-        if not self.profile or not isinstance(self.profile, str):
-            raise ValueError("s3.profile must be a non-empty string")
+        if self.profile is not None and (not isinstance(self.profile, str) or not self.profile):
+            raise ValueError("s3.profile must be None or a non-empty string")
     
     def s3_key_for_series(self, series_id: str) -> str:
         """
@@ -286,11 +286,15 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
         raise ValueError("s3 must be an object")
     s3_keys = {"bucket", "prefix_template", "filename", "profile"}
     _validate_no_unknown_keys(s3_data, s3_keys, "s3")
+    # Handle null profile (JSON null becomes None in Python)
+    s3_profile_value = s3_data.get("profile")
+    if s3_profile_value is None:
+        s3_profile_value = None
     s3_config = S3Config(
         bucket=s3_data["bucket"],
         prefix_template=s3_data["prefix_template"],
         filename=s3_data["filename"],
-        profile=s3_data["profile"],
+        profile=s3_profile_value,
     )
     
     # Validate and build artifacts config
