@@ -54,6 +54,27 @@ jobs:
           python --version
           pip --version
 
+      - name: Fetch model artifacts (S3)
+        run: |
+          mkdir -p models
+          aws s3 cp s3://fx-rate-pipeline-dev/models/h7/logreg_h7_global.joblib models/logreg_h7_global.joblib --only-show-errors
+          aws s3 cp s3://fx-rate-pipeline-dev/models/h7/features_h7.json models/features_h7.json --only-show-errors
+          aws s3 cp s3://fx-rate-pipeline-dev/models/h7/metadata_h7.json models/metadata_h7.json --only-show-errors
+
+      - name: Preflight: verify model files
+        run: |
+          ls -lah models
+          python -c "import os; import sys; req=['models/logreg_h7_global.joblib','models/features_h7.json','models/metadata_h7.json']; missing=[p for p in req if not os.path.exists(p)]; print('missing=',missing); sys.exit(1 if missing else 0)"
+
+      - name: Preflight: S3 perms
+        continue-on-error: true
+        run: |
+          echo "Checking S3 permissions..."
+          echo "Gold prefix:"
+          aws s3 ls s3://fx-rate-pipeline-dev/gold/ --only-show-errors || echo "Gold prefix check failed (non-fatal)"
+          echo "Predictions latest prefix:"
+          aws s3 ls s3://fx-rate-pipeline-dev/predictions/h7/latest/ --only-show-errors || echo "Predictions prefix check failed (non-fatal)"
+
       - name: Run unit tests
         run: |
           python -m pytest -q
