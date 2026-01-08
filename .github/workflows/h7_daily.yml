@@ -1,17 +1,18 @@
-# touch: force workflow re-index
-
 name: H7 Daily Pipeline
 
-'on':
+on:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run mode (validate config, print plan, no execution)'
+        description: "Dry run mode (validate config, print plan, no execution)"
         required: false
-        default: false
-        type: boolean
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: h7-daily
