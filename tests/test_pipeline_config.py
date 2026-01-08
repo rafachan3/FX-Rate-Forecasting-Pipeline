@@ -257,14 +257,23 @@ def test_s3_config_validation():
             profile="fx-gold",
         )
     
-    # Empty profile
-    with pytest.raises(ValueError, match="s3.profile must be a non-empty string"):
+    # Empty profile string (not None)
+    with pytest.raises(ValueError, match="s3.profile must be None or a non-empty string"):
         S3Config(
             bucket="test-bucket",
             prefix_template="gold/source=BoC/series={series_id}/",
             filename="data.parquet",
             profile="",
         )
+    
+    # None profile is valid
+    s3_none = S3Config(
+        bucket="test-bucket",
+        prefix_template="gold/source=BoC/series={series_id}/",
+        filename="data.parquet",
+        profile=None,
+    )
+    assert s3_none.profile is None
 
 
 def test_artifacts_config_validation():

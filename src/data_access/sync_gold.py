@@ -9,7 +9,7 @@ from pathlib import Path
 from src.pipeline.config import PipelineConfig
 
 
-def sync_gold_series(*, bucket: str, key: str, dst_path: str, profile: str) -> None:
+def sync_gold_series(*, bucket: str, key: str, dst_path: str, profile: str | None = None) -> None:
     """
     Sync a single gold series from S3 to local path using AWS CLI.
     
@@ -19,7 +19,7 @@ def sync_gold_series(*, bucket: str, key: str, dst_path: str, profile: str) -> N
         bucket: S3 bucket name
         key: S3 key (without bucket prefix)
         dst_path: Local destination path
-        profile: AWS profile name (required)
+        profile: AWS profile name (optional; if None, uses ambient credentials)
         
     Raises:
         FileNotFoundError: If AWS CLI is not found
@@ -37,7 +37,7 @@ def sync_gold_series(*, bucket: str, key: str, dst_path: str, profile: str) -> N
         tmp_path = tmp_file.name
     
     try:
-        # Run AWS CLI command with profile
+        # Run AWS CLI command
         s3_uri = f"s3://{bucket}/{key}"
         cmd = [
             "aws",
@@ -45,10 +45,12 @@ def sync_gold_series(*, bucket: str, key: str, dst_path: str, profile: str) -> N
             "cp",
             s3_uri,
             tmp_path,
-            "--profile",
-            profile,
             "--only-show-errors",
         ]
+        
+        # Only add --profile if provided
+        if profile:
+            cmd.extend(["--profile", profile])
         result = subprocess.run(
             cmd,
             capture_output=True,
