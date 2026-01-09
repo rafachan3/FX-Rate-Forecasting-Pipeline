@@ -1,0 +1,41 @@
+{
+  "horizon": "h7",
+  "timezone": "America/Toronto",
+  "series": [
+    {
+      "series_id": "FXUSDCAD",
+      "gold_local_path": "data/gold/FXUSDCAD/data.parquet"
+    }
+  ],
+  "s3": {
+    "bucket": "fx-rate-pipeline-dev",
+    "prefix_template": "gold/source=BoC/series={series_id}/",
+    "filename": "data.parquet",
+    "profile": null
+  },
+  "artifacts": {
+    "dir": "models",
+    "model_file": "logreg_h7.joblib",
+    "features_file": "features_h7.json",
+    "metadata_file": "metadata_h7.json"
+  },
+  "outputs": {
+    "runs_dir": "outputs/runs",
+    "latest_dir": "outputs/latest"
+  },
+  "publish": {
+    "bucket": "fx-rate-pipeline-dev",
+    "profile": null,
+    "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
+    "prefix_latest": "predictions/{horizon}/latest/"
+  },
+  "email": {
+    "provider": "ses",
+    "region": "us-east-2",
+    "from_email": "north.bound.fx@gmail.com",
+    "to_emails": ["north.bound.fx@gmail.com"],
+    "subject_template": "[FX] {horizon} latest — {run_date}",
+    "body_format": "text",
+    "aws_profile": null
+  }
+}
