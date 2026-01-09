@@ -23,3 +23,7 @@ htmlcov/
 
 # dotenv variants
 .env.*
+
+# SAM build artifacts
+.aws-sam/
+samconfig.toml
