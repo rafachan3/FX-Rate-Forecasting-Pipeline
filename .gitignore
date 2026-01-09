@@ -27,3 +27,19 @@ htmlcov/
 # SAM build artifacts
 .aws-sam/
 samconfig.toml
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# venvs
+.venv/
+.venv_api/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
