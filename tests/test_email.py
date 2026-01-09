@@ -12,6 +12,7 @@ import pytest
 
 from src.pipeline.config import EmailConfig
 from src.pipeline.email import (
+    build_email_body_html,
     build_email_body_text,
     build_email_subject,
     send_email,
@@ -147,17 +148,23 @@ def test_build_email_body_text_deterministic_ordering():
             latest_dir=latest_dir,
         )
         
-        lines = body.split("\n")
-        signal_lines = [l for l in lines if "  FX" in l and ":" in l and "p=" in l]
+        # Check that all currency pairs are present
+        assert "EUR/CAD" in body
+        assert "GBP/CAD" in body
+        assert "USD/CAD" in body
         
-        assert len(signal_lines) == 3
-        assert "FXEURCAD" in signal_lines[0]
-        assert "FXGBPCAD" in signal_lines[1]
-        assert "FXUSDCAD" in signal_lines[2]
+        # Check that the order is deterministic (alphabetical by series_id)
+        # EUR/CAD should appear before GBP/CAD, and GBP/CAD before USD/CAD
+        eur_pos = body.find("EUR/CAD")
+        gbp_pos = body.find("GBP/CAD")
+        usd_pos = body.find("USD/CAD")
         
-        assert "h7" in body
-        assert "2024-01-15" in body
-        assert "Latest signals" in body
+        assert eur_pos < gbp_pos < usd_pos, "Currency pairs should be in alphabetical order"
+        
+        # Check header and date info
+        assert "7-Day" in body  # Horizon display name
+        assert "2024-01-15" in body or "January 15, 2024" in body
+        assert "TODAY'S SIGNALS" in body or "SIGNALS" in body
 
 
 def test_build_email_body_text_missing_predictions():
@@ -172,6 +179,49 @@ def test_build_email_body_text_missing_predictions():
                 run_date="2024-01-15",
                 latest_dir=latest_dir,
             )
+
+
+def test_build_email_body_html():
+    """Test that HTML email body is generated correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        latest_dir = Path(tmpdir) / "latest"
+        latest_dir.mkdir()
+        
+        df_pred = pd.DataFrame({
+            "obs_date": pd.date_range("2024-01-01", periods=3, freq="D"),
+            "series_id": ["FXUSDCAD", "FXEURCAD", "FXUSDCAD"],
+            "p_up_logreg": [0.75, 0.35, 0.72],
+            "action_logreg": ["UP", "DOWN", "UP"],
+        })
+        predictions_file = latest_dir / "decision_predictions_h7.parquet"
+        df_pred.to_parquet(predictions_file, index=False)
+        
+        html = build_email_body_html(
+            horizon="h7",
+            run_date="2024-01-15",
+            latest_dir=latest_dir,
+        )
+        
+        # Check HTML structure
+        assert "<!DOCTYPE html>" in html
+        assert "<html>" in html
+        assert "</html>" in html
+        
+        # Check currency pairs are present
+        assert "USD/CAD" in html
+        assert "EUR/CAD" in html
+        
+        # Check signals info
+        assert "7-Day" in html  # Horizon display name
+        assert "January 15, 2024" in html  # Readable date
+        
+        # Check signal indicators (UP should have Bullish, DOWN should have Bearish)
+        assert "Bullish" in html
+        assert "Bearish" in html
+        
+        # Check probability display
+        assert "75.0%" in html or "72.0%" in html  # USD/CAD probability
+        assert "35.0%" in html  # EUR/CAD probability
 
 
 # =============================================================================

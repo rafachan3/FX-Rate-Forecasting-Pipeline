@@ -15,7 +15,12 @@ from src.pipeline.paths import (
     get_run_manifest_path,
     get_run_predictions_path,
 )
-from src.pipeline.email import build_email_body_text, build_email_subject, send_email
+from src.pipeline.email import (
+    build_email_body_html,
+    build_email_body_text,
+    build_email_subject,
+    send_email,
+)
 from src.pipeline.publish_s3 import publish_latest_outputs, publish_run_outputs
 from src.pipeline.run_date import toronto_now_iso, toronto_today
 
@@ -296,8 +301,19 @@ def main() -> None:
             publish_config=publish_config_dict,
         )
         
-        # Send email
-        send_email(config.email, subject, body_text)
+        # Build HTML body if configured
+        body_html = None
+        if config.email.body_format == "html":
+            body_html = build_email_body_html(
+                horizon=config.horizon,
+                run_date=run_date,
+                latest_dir=config.outputs.latest_dir,
+                manifest_path=None,  # Will auto-detect from latest_dir
+                publish_config=publish_config_dict,
+            )
+        
+        # Send email (with HTML if configured)
+        send_email(config.email, subject, body_text, body_html)
         emailed_info = " emailed=true"
     
     # Print single success line

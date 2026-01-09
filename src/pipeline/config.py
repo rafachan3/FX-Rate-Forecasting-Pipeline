@@ -161,8 +161,8 @@ class EmailConfig:
             raise ValueError('email.subject_template must contain "{horizon}" placeholder')
         if "{run_date}" not in self.subject_template:
             raise ValueError('email.subject_template must contain "{run_date}" placeholder')
-        if self.body_format not in ("text",):
-            raise ValueError(f'email.body_format must be "text", got "{self.body_format}"')
+        if self.body_format not in ("text", "html"):
+            raise ValueError(f'email.body_format must be "text" or "html", got "{self.body_format}"')
 
 
 @dataclass

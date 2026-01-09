@@ -33,7 +33,7 @@
       "api_key": "${SENDGRID_API_KEY}",
       "from_email": "noreply@northbound-fx.com",
       "to_emails": ["north.bound.fx@gmail.com"],
-      "subject_template": "[FX] {horizon} latest — {run_date}",
-      "body_format": "text"
+      "subject_template": "📊 FX Signals | {horizon} Forecast — {run_date}",
+      "body_format": "html"
   }
 }
