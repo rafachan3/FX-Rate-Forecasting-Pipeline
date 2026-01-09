@@ -20,6 +20,7 @@ Usage:
 import argparse
 import sys
 import time
+import json
 from datetime import datetime, timezone
 from io import BytesIO
 
@@ -207,7 +208,25 @@ def process_series(
         Body=parquet_buffer.getvalue(),
         ContentType="application/octet-stream",
     )
-    
+
+    # 8. Create watermark so Lambda knows where to continue from
+    watermark = {
+        "last_obs_date": str(df["obs_date"].max()),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    watermark_key = f"gold/source=BoC/series={series_id}/_watermark.json"
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=watermark_key,
+        Body=json.dumps(watermark, indent=2).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+    print(f"  ✓ Watermark created: s3://{bucket}/{watermark_key}")
+    print(f"   Last obs_date: {df['obs_date'].max()}")
+    print(f"   Updated at: {datetime.now(timezone.utc).isoformat()}")
+
     return {
         "series_id": series_id,
         "status": "success",

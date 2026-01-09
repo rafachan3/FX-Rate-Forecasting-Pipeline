@@ -35,7 +35,7 @@ BOC_FX_SERIES = [
     "FXCHFCAD", "FXCNYCAD", "FXHKDCAD", "FXMXNCAD", "FXINRCAD",
     "FXNZDCAD", "FXSARCAD", "FXSGDCAD", "FXZARCAD", "FXKRWCAD",
     "FXSEKCAD", "FXNOKCAD", "FXTRYCAD", "FXBRLCAD", "FXRUBCAD",
-    "FXIDRCAD", "FXTWDCAD",
+    "FXIDRCAD", "FXTWDCAD", "FXMYRCAD",
 ]
 
 # Core Functions (from Lambda handler)
@@ -238,6 +238,26 @@ def process_series(
             ContentType="application/octet-stream",
         )
         records_written += len(group)
+
+    # 7. Create watermark so Lambda knows where to continue from
+    latest_ingest_ts = max(f["ingest_ts"] for f in bronze_files)
+    watermark = {
+        "last_ingest_ts": latest_ingest_ts,
+        "last_obs_date": str(df["obs_date"].max()),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    watermark_key = f"silver/source=BoC/series={series_id}/_watermark.json"
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=watermark_key,
+        Body=json.dumps(watermark, indent=2).encode("utf-8"),
+        ContentType="application/json",
+    )
+    print(f"  ✓ Watermark created: s3://{bucket}/{watermark_key}")
+    print(f"   Last ingest_ts: {latest_ingest_ts}")
+    print(f"   Last obs_date: {df['obs_date'].max()}")
+    print(f"   Updated at: {datetime.now(timezone.utc).isoformat()}")
     
     return {
         "series_id": series_id,
