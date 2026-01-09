@@ -158,6 +158,7 @@ packaged.yaml
 # =============================================================================
 # Generated outputs and artifacts
 outputs/
+models/
 
 # Local data downloads/exports
 data/

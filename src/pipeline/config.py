@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
+import os
 
 @dataclass
 class SeriesConfig:
@@ -125,22 +125,29 @@ class PublishConfig:
 
 @dataclass
 class EmailConfig:
-    """Email delivery configuration."""
+    """Email delivery configuration (SendGrid)."""
     
-    provider: str
-    region: str
+    api_key: str
     from_email: str
     to_emails: list[str]
     subject_template: str
     body_format: str = "text"
-    aws_profile: str | None = None
     
     def __post_init__(self) -> None:
         """Validate email configuration."""
-        if self.provider != "ses":
-            raise ValueError(f'email.provider must be "ses", got "{self.provider}"')
-        if not self.region or not isinstance(self.region, str):
-            raise ValueError("email.region must be a non-empty string")
+        # Resolve environment variable for api_key if needed
+        if self.api_key and self.api_key.startswith("${") and self.api_key.endswith("}"):
+            env_var = self.api_key[2:-1]
+            resolved_key = os.environ.get(env_var)
+            if not resolved_key:
+                raise ValueError(
+                    f"Environment variable {env_var} not set for email.api_key. "
+                    f"Set it or provide the API key directly."
+                )
+            object.__setattr__(self, 'api_key', resolved_key)
+        
+        if not self.api_key or not isinstance(self.api_key, str):
+            raise ValueError("email.api_key must be a non-empty string")
         if not self.from_email or not isinstance(self.from_email, str):
             raise ValueError("email.from_email must be a non-empty string")
         if not isinstance(self.to_emails, list) or len(self.to_emails) == 0:
@@ -156,8 +163,6 @@ class EmailConfig:
             raise ValueError('email.subject_template must contain "{run_date}" placeholder')
         if self.body_format not in ("text",):
             raise ValueError(f'email.body_format must be "text", got "{self.body_format}"')
-        if self.aws_profile is not None and (not isinstance(self.aws_profile, str) or not self.aws_profile):
-            raise ValueError("email.aws_profile must be None or a non-empty string")
 
 
 @dataclass
@@ -287,7 +292,7 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
     s3_keys = {"bucket", "prefix_template", "filename", "profile"}
     _validate_no_unknown_keys(s3_data, s3_keys, "s3")
     # Handle null profile (JSON null becomes None in Python)
-    profile=s3_data.get("profile"),
+    s3_profile_value = s3_data.get("profile")
 
     s3_config = S3Config(
         bucket=s3_data["bucket"],
@@ -339,22 +344,20 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
             prefix_latest=publish_data["prefix_latest"],
         )
     
-    # Validate and build email config (optional)
+# Validate and build email config (optional)
     email_config = None
     if "email" in data:
         email_data = data.get("email", {})
         if not isinstance(email_data, dict):
             raise ValueError("email must be an object")
-        email_keys = {"provider", "region", "from_email", "to_emails", "subject_template", "body_format", "aws_profile"}
+        email_keys = {"api_key", "from_email", "to_emails", "subject_template", "body_format"}
         _validate_no_unknown_keys(email_data, email_keys, "email")
         email_config = EmailConfig(
-            provider=email_data["provider"],
-            region=email_data["region"],
+            api_key=email_data["api_key"],
             from_email=email_data["from_email"],
             to_emails=email_data["to_emails"],
             subject_template=email_data["subject_template"],
             body_format=email_data.get("body_format", "text"),
-            aws_profile=email_data.get("aws_profile"),
         )
     
     # Build and return pipeline config
