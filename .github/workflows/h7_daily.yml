@@ -64,12 +64,23 @@ jobs:
           aws s3 cp s3://fx-rate-pipeline-dev/models/h7/features_h7.json models/features_h7.json --only-show-errors
           aws s3 cp s3://fx-rate-pipeline-dev/models/h7/metadata_h7.json models/metadata_h7.json --only-show-errors
 
-      - name: Preflight: verify model files
+      - name: "Preflight: verify model files"
         run: |
+          set -euo pipefail
           ls -lah models
-          python -c "import os; import sys; req=['models/logreg_h7_global.joblib','models/features_h7.json','models/metadata_h7.json']; missing=[p for p in req if not os.path.exists(p)]; print('missing=',missing); sys.exit(1 if missing else 0)"
+          python3 << 'PYEOF'
+          import os, sys
+          req = [
+              "models/logreg_h7_global.joblib",
+              "models/features_h7.json",
+              "models/metadata_h7.json",
+          ]
+          missing = [p for p in req if not os.path.exists(p)]
+          print("missing=", missing)
+          sys.exit(1 if missing else 0)
+          PYEOF
 
-      - name: Preflight: S3 perms
+      - name: "Preflight: S3 perms"
         continue-on-error: true
         run: |
           echo "Checking S3 permissions..."
