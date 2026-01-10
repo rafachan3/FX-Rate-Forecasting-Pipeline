@@ -3,6 +3,12 @@
  * Handles retries, timeouts, and error formatting.
  */
 
+declare const process: {
+  env: {
+    [key: string]: string | undefined;
+  };
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface HealthResponse {
@@ -18,12 +24,30 @@ export interface PredictionItem {
   pair_label?: string;
   generated_at?: string;
   obs_date?: string | null;
-  direction: "UP" | "DOWN" | "ABSTAIN";
+  direction: "UP" | "DOWN" | "ABSTAIN" | "SIDEWAYS"; // API may return ABSTAIN, UI maps to SIDEWAYS
   confidence: number;
   model?: string;
   raw?: {
     p_up?: number;
   };
+}
+
+/**
+ * Maps API direction values to UI display values.
+ * API returns "ABSTAIN", UI displays "SIDEWAYS".
+ */
+export function mapDirection(direction: string): "UP" | "DOWN" | "SIDEWAYS" {
+  if (direction === "ABSTAIN" || direction === "SIDEWAYS") {
+    return "SIDEWAYS";
+  }
+  if (direction === "UP") {
+    return "UP";
+  }
+  if (direction === "DOWN") {
+    return "DOWN";
+  }
+  // Default fallback
+  return "SIDEWAYS";
 }
 
 export interface LatestResponse {
@@ -66,16 +90,18 @@ export interface ApiError {
   request_id?: string;
 }
 
-class ApiClientError extends Error {
-  constructor(
-    message: string,
-    public status?: number,
-    public code?: string,
-  ) {
+export class ApiClientError extends Error {
+  status?: number;
+  code?: string;
+
+  constructor(message: string, status?: number, code?: string) {
     super(message);
     this.name = "ApiClientError";
+    this.status = status;
+    this.code = code;
   }
 }
+
 
 /**
  * Fetch with timeout, retry, and error handling.
@@ -124,7 +150,7 @@ async function apiFetch<T>(
     const response = await fetchWithRetry(0);
 
     if (!response.ok) {
-      let errorDetail: ApiError | null = null;
+      let errorDetail: ApiError;
       try {
         const errorData = await response.json();
         errorDetail = errorData.error || { code: "HTTP_ERROR", message: response.statusText };

@@ -58,7 +58,7 @@ export default function HowItWorksModal({ isOpen, onClose }: HowItWorksModalProp
                 <span className="text-[#EF4444] font-medium">DOWN</span> — The model predicts the exchange rate will decrease (the first currency will weaken against CAD).
               </p>
               <p>
-                <span className="text-[#94A3B8] font-medium">ABSTAIN</span> — The model has low confidence and recommends no directional position.
+                <span className="text-[#94A3B8] font-medium">SIDEWAYS</span> — The model has low confidence and recommends no directional position.
               </p>
             </div>
           </div>
