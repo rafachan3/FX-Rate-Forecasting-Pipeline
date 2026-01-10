@@ -3,15 +3,103 @@
   "timezone": "America/Toronto",
   "series": [
     {
+      "series_id": "FXAUDCAD",
+      "gold_local_path": "data/gold/FXAUDCAD"
+    },
+    {
+      "series_id": "FXBRLCAD",
+      "gold_local_path": "data/gold/FXBRLCAD"
+    },
+    {
+      "series_id": "FXCHFCAD",
+      "gold_local_path": "data/gold/FXCHFCAD"
+    },
+    {
+      "series_id": "FXCNYCAD",
+      "gold_local_path": "data/gold/FXCNYCAD"
+    },
+    {
+      "series_id": "FXEURCAD",
+      "gold_local_path": "data/gold/FXEURCAD"
+    },
+    {
+      "series_id": "FXGBPCAD",
+      "gold_local_path": "data/gold/FXGBPCAD"
+    },
+    {
+      "series_id": "FXHKDCAD",
+      "gold_local_path": "data/gold/FXHKDCAD"
+    },
+    {
+      "series_id": "FXIDRCAD",
+      "gold_local_path": "data/gold/FXIDRCAD"
+    },
+    {
+      "series_id": "FXINRCAD",
+      "gold_local_path": "data/gold/FXINRCAD"
+    },
+    {
+      "series_id": "FXJPYCAD",
+      "gold_local_path": "data/gold/FXJPYCAD"
+    },
+    {
+      "series_id": "FXKRWCAD",
+      "gold_local_path": "data/gold/FXKRWCAD"
+    },
+    {
+      "series_id": "FXMXNCAD",
+      "gold_local_path": "data/gold/FXMXNCAD"
+    },
+    {
+      "series_id": "FXNOKCAD",
+      "gold_local_path": "data/gold/FXNOKCAD"
+    },
+    {
+      "series_id": "FXNZDCAD",
+      "gold_local_path": "data/gold/FXNZDCAD"
+    },
+    {
+      "series_id": "FXPENCAD",
+      "gold_local_path": "data/gold/FXPENCAD"
+    },
+    {
+      "series_id": "FXRUBCAD",
+      "gold_local_path": "data/gold/FXRUBCAD"
+    },
+    {
+      "series_id": "FXSARCAD",
+      "gold_local_path": "data/gold/FXSARCAD"
+    },
+    {
+      "series_id": "FXSEKCAD",
+      "gold_local_path": "data/gold/FXSEKCAD"
+    },
+    {
+      "series_id": "FXSGDCAD",
+      "gold_local_path": "data/gold/FXSGDCAD"
+    },
+    {
+      "series_id": "FXTRYCAD",
+      "gold_local_path": "data/gold/FXTRYCAD"
+    },
+    {
+      "series_id": "FXTWDCAD",
+      "gold_local_path": "data/gold/FXTWDCAD"
+    },
+    {
       "series_id": "FXUSDCAD",
-      "gold_local_path": "data/gold/FXUSDCAD/data.parquet"
+      "gold_local_path": "data/gold/FXUSDCAD"
+    },
+    {
+      "series_id": "FXZARCAD",
+      "gold_local_path": "data/gold/FXZARCAD"
     }
   ],
   "s3": {
     "bucket": "fx-rate-pipeline-dev",
     "prefix_template": "gold/source=BoC/series={series_id}/",
     "filename": "data.parquet",
-    "profile": null
+    "profile": "fx-gold"
   },
   "artifacts": {
     "dir": "models",
@@ -25,7 +113,7 @@
   },
   "publish": {
     "bucket": "fx-rate-pipeline-dev",
-    "profile": null,
+    "profile": "fx-gold",
     "prefix_runs_template": "predictions/{horizon}/runs/{run_date}/",
     "prefix_latest": "predictions/{horizon}/latest/"
   },
@@ -33,9 +121,11 @@
     "provider": "ses",
     "region": "us-east-2",
     "from_email": "north.bound.fx@gmail.com",
-    "to_emails": ["north.bound.fx@gmail.com"],
-    "subject_template": "[FX] {horizon} latest — {run_date}",
+    "to_emails": [
+      "north.bound.fx@gmail.com"
+    ],
+    "subject_template": "[FX] {horizon} latest \u2014 {run_date}",
     "body_format": "text",
-    "aws_profile": null
+    "aws_profile": "fx-gold"
   }
 }

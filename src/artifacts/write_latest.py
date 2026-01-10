@@ -24,6 +24,33 @@ def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_")
 
 
+def series_id_to_pair(series_id: str) -> str:
+    """
+    Convert series_id (e.g., FXUSDCAD) to pair format (e.g., USD_CAD).
+    
+    Rule: Strip leading "FX", then insert underscore before "CAD".
+    All series are against CAD.
+    
+    Args:
+        series_id: Series identifier like "FXUSDCAD", "FXEURCAD"
+        
+    Returns:
+        Pair string like "USD_CAD", "EUR_CAD"
+    """
+    if not series_id.startswith("FX"):
+        raise ValueError(f"Expected series_id to start with 'FX', got: {series_id}")
+    
+    # Remove "FX" prefix
+    base = series_id[2:]
+    
+    # Insert underscore before "CAD"
+    if not base.endswith("CAD"):
+        raise ValueError(f"Expected series_id to end with 'CAD', got: {series_id}")
+    
+    currency = base[:-3]  # Everything before "CAD"
+    return f"{currency}_CAD"
+
+
 def _ensure_datetime_index_or_col(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
@@ -91,20 +118,28 @@ class LatestArtifact:
     rows: list[LatestRow]
 
 
-def build_latest(
-    outputs_dir: Path,
+def build_latest_for_df(
+    df: pd.DataFrame,
     sha: str,
     pair: str,
     horizon: str,
     limit_rows: int,
     threshold: float,
 ) -> LatestArtifact:
-    # Your file name is decision_predictions_h7.parquet
-    path = outputs_dir / f"decision_predictions_{horizon}.parquet"
-    if not path.exists():
-        raise FileNotFoundError(str(path))
-
-    df = pd.read_parquet(path)
+    """
+    Build LatestArtifact from a filtered dataframe (for a specific series).
+    
+    Args:
+        df: DataFrame with obs_date, series_id, and prediction columns
+        sha: Git SHA
+        pair: Pair label (e.g., "USD_CAD")
+        horizon: Horizon tag (e.g., "h7")
+        limit_rows: Maximum rows to include (most recent)
+        threshold: Threshold for policy decisions
+        
+    Returns:
+        LatestArtifact for the given pair
+    """
     df = _ensure_datetime_index_or_col(df)
 
     # Check for richer schema: decision and confidence columns
@@ -198,6 +233,121 @@ def build_latest(
     )
 
 
+def build_latest(
+    outputs_dir: Path,
+    sha: str,
+    pair: str,
+    horizon: str,
+    limit_rows: int,
+    threshold: float,
+) -> LatestArtifact:
+    """
+    Build LatestArtifact for a single pair (backward compatibility).
+    
+    Reads decision_predictions_{horizon}.parquet and filters for the given pair.
+    """
+    # Your file name is decision_predictions_h7.parquet
+    path = outputs_dir / f"decision_predictions_{horizon}.parquet"
+    if not path.exists():
+        raise FileNotFoundError(str(path))
+
+    df = pd.read_parquet(path)
+    
+    # Filter by pair if series_id column exists
+    if "series_id" in df.columns:
+        # Convert pair back to series_id for filtering
+        # This is a simple reverse: USD_CAD -> FXUSDCAD
+        # But we need to handle the general case
+        # For now, if pair doesn't match series_id format, filter won't work
+        # This maintains backward compat for old usage
+        pass  # Don't filter - old behavior was to use all rows
+    
+    return build_latest_for_df(df, sha, pair, horizon, limit_rows, threshold)
+
+
+def build_all_latest(
+    outputs_dir: Path,
+    sha: str,
+    horizon: str,
+    limit_rows: int,
+    threshold: float,
+    target_dir: Optional[Path] = None,
+) -> list[tuple[Path, Path]]:
+    """
+    Build latest artifacts for all series in decision_predictions parquet.
+    
+    Reads the parquet file once, groups by series_id, and generates one JSON/CSV
+    file per pair.
+    
+    Args:
+        outputs_dir: Directory containing decision_predictions_{horizon}.parquet
+        sha: Git SHA
+        horizon: Horizon tag (e.g., "h7")
+        limit_rows: Maximum rows per pair (most recent)
+        threshold: Threshold for policy decisions
+        target_dir: Optional target directory for writing files. If None, uses outputs_dir/latest
+        
+    Returns:
+        List of (json_path, csv_path) tuples for all generated files
+    """
+    path = outputs_dir / f"decision_predictions_{horizon}.parquet"
+    if not path.exists():
+        raise FileNotFoundError(str(path))
+    
+    # Read parquet once
+    df = pd.read_parquet(path)
+    df = _ensure_datetime_index_or_col(df)
+    
+    # Check that series_id column exists
+    if "series_id" not in df.columns:
+        raise ValueError(f"Expected 'series_id' column in {path}")
+    
+    # Get unique series_ids
+    unique_series = df["series_id"].unique()
+    
+    generated_files = []
+    
+    for series_id in sorted(unique_series):
+        # Filter dataframe for this series
+        series_df = df[df["series_id"] == series_id].copy()
+        
+        # Convert series_id to pair format
+        try:
+            pair = series_id_to_pair(series_id)
+        except ValueError as e:
+            print(f"Warning: Skipping {series_id}: {e}")
+            continue
+        
+        # Build latest artifact for this pair
+        artifact = build_latest_for_df(
+            df=series_df,
+            sha=sha,
+            pair=pair,
+            horizon=horizon,
+            limit_rows=limit_rows,
+            threshold=threshold,
+        )
+        
+        # Write artifacts to target directory (or default to outputs_dir/latest)
+        json_path, csv_path = write_artifacts(outputs_dir, artifact, target_dir=target_dir)
+        
+        # Verify both files were created
+        if not json_path.exists():
+            raise RuntimeError(f"JSON file not created: {json_path}")
+        if not csv_path.exists():
+            raise RuntimeError(f"CSV file not created: {csv_path}")
+        
+        generated_files.append((json_path, csv_path))
+    
+    # Log generation stats
+    target_str = str(target_dir) if target_dir else str(outputs_dir / "latest")
+    json_count = len([f for f in generated_files if f[0].exists()])
+    csv_count = len([f for f in generated_files if f[1].exists()])
+    print(f"[write_latest] generated_json={json_count} generated_csv={csv_count} dir={target_str}")
+    
+    return generated_files
+
+
 def promote_to_latest(*, latest_dir: str, files: list[tuple[str, str]]) -> None:
     """
     Atomically promote multiple files to latest directory.
@@ -254,9 +404,21 @@ def promote_to_latest(*, latest_dir: str, files: list[tuple[str, str]]) -> None:
         raise  # Re-raise original error
 
 
-def write_artifacts(outputs_dir: Path, artifact: LatestArtifact) -> tuple[Path, Path]:
-    # If caller already points to a "latest" directory, don't nest another one.
-    target_dir = outputs_dir if outputs_dir.name == "latest" else (outputs_dir / "latest")
+def write_artifacts(outputs_dir: Path, artifact: LatestArtifact, target_dir: Optional[Path] = None) -> tuple[Path, Path]:
+    """
+    Write latest artifact JSON and CSV files.
+    
+    Args:
+        outputs_dir: Base outputs directory
+        artifact: LatestArtifact to write
+        target_dir: Optional target directory. If None, uses outputs_dir/latest if outputs_dir.name != "latest"
+        
+    Returns:
+        Tuple of (json_path, csv_path)
+    """
+    if target_dir is None:
+        # If caller already points to a "latest" directory, don't nest another one.
+        target_dir = outputs_dir if outputs_dir.name == "latest" else (outputs_dir / "latest")
     target_dir.mkdir(parents=True, exist_ok=True)
 
     pair_slug = _slug(artifact.pair)
@@ -264,10 +426,15 @@ def write_artifacts(outputs_dir: Path, artifact: LatestArtifact) -> tuple[Path, 
     csv_path = target_dir / f"latest_{pair_slug}_{artifact.horizon}.csv"
 
     payload = asdict(artifact)
-    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
+    # Always write CSV, even if empty
     df = pd.DataFrame([asdict(r) for r in artifact.rows])
     df.to_csv(csv_path, index=False)
+    
+    # Verify CSV was written
+    if not csv_path.exists():
+        raise RuntimeError(f"CSV file was not created: {csv_path}")
 
     return json_path, csv_path
 

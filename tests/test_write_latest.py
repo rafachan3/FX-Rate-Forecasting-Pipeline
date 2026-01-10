@@ -7,7 +7,14 @@ import pandas as pd
 import tempfile
 from pathlib import Path
 
-from src.artifacts.write_latest import build_latest, LatestRow, promote_to_latest
+from src.artifacts.write_latest import (
+    build_latest,
+    build_all_latest,
+    build_latest_for_df,
+    LatestRow,
+    promote_to_latest,
+    series_id_to_pair,
+)
 
 
 def test_build_latest_with_decision_confidence():
@@ -308,4 +315,152 @@ def test_promote_to_latest_overwrites_existing(tmp_path: Path):
     # Verify old file was replaced
     df_read = pd.read_parquet(latest_dir / "data.parquet")
     assert df_read["col"].tolist() == [4, 5, 6]
+
+
+def test_series_id_to_pair():
+    """Test series_id to pair conversion."""
+    assert series_id_to_pair("FXUSDCAD") == "USD_CAD"
+    assert series_id_to_pair("FXEURCAD") == "EUR_CAD"
+    assert series_id_to_pair("FXGBPCAD") == "GBP_CAD"
+    assert series_id_to_pair("FXJPYCAD") == "JPY_CAD"
+    assert series_id_to_pair("FXAUDCAD") == "AUD_CAD"
+    
+    # Test error cases
+    with pytest.raises(ValueError, match="Expected series_id to start with 'FX'"):
+        series_id_to_pair("USDCAD")
+    
+    with pytest.raises(ValueError, match="Expected series_id to end with 'CAD'"):
+        series_id_to_pair("FXUSDUSD")
+
+
+def test_build_all_latest_multiple_series(tmp_path: Path):
+    """Test that build_all_latest generates one file per series."""
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    
+    # Create parquet with multiple series
+    df = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=10, freq="D"),
+        "series_id": ["FXUSDCAD"] * 5 + ["FXEURCAD"] * 5,
+        "p_up_logreg": [0.7, 0.3, 0.5, 0.8, 0.2] * 2,
+        "decision": ["UP", "DOWN", "SIDEWAYS", "UP", "DOWN"] * 2,
+        "confidence": [0.5, 0.7, 0.0, 0.8, 0.6] * 2,
+    })
+    df = df.set_index("obs_date")
+    
+    parquet_path = outputs_dir / "decision_predictions_h7.parquet"
+    df.to_parquet(parquet_path)
+    
+    # Build all latest files
+    latest_files = build_all_latest(
+        outputs_dir=outputs_dir,
+        sha="test123",
+        horizon="h7",
+        limit_rows=10,
+        threshold=0.6,
+    )
+    
+    # Should generate 2 pairs (USD_CAD and EUR_CAD)
+    assert len(latest_files) == 2
+    
+    # Check that files exist
+    json_files = [f[0] for f in latest_files]
+    assert any("USD_CAD" in str(f) for f in json_files)
+    assert any("EUR_CAD" in str(f) for f in json_files)
+    
+    # Verify JSON content for one file
+    usd_file = next(f for f in json_files if "USD_CAD" in str(f))
+    data = json.loads(usd_file.read_text())
+    assert data["pair"] == "USD_CAD"
+    assert data["horizon"] == "h7"
+    assert len(data["rows"]) == 5  # 5 rows for USD_CAD
+
+
+def test_build_all_latest_23_series(tmp_path: Path):
+    """Test that build_all_latest handles 23 series correctly."""
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    
+    # Create parquet with 23 different series
+    series_ids = [
+        "FXAUDCAD", "FXBRLCAD", "FXCHFCAD", "FXCNYCAD", "FXEURCAD",
+        "FXGBPCAD", "FXHKDCAD", "FXIDRCAD", "FXINRCAD", "FXJPYCAD",
+        "FXKRWCAD", "FXMXNCAD", "FXNOKCAD", "FXNZDCAD", "FXPENCAD",
+        "FXRUBCAD", "FXSARCAD", "FXSEKCAD", "FXSGDCAD", "FXTRYCAD",
+        "FXTWDCAD", "FXUSDCAD", "FXZARCAD",
+    ]
+    
+    # Create dataframe with one row per series
+    rows = []
+    for series_id in series_ids:
+        rows.append({
+            "obs_date": pd.Timestamp("2024-01-01"),
+            "series_id": series_id,
+            "p_up_logreg": 0.7,
+            "decision": "UP",
+            "confidence": 0.5,
+        })
+    
+    df = pd.DataFrame(rows)
+    df = df.set_index("obs_date")
+    
+    parquet_path = outputs_dir / "decision_predictions_h7.parquet"
+    df.to_parquet(parquet_path)
+    
+    # Build all latest files
+    latest_files = build_all_latest(
+        outputs_dir=outputs_dir,
+        sha="test123",
+        horizon="h7",
+        limit_rows=10,
+        threshold=0.6,
+    )
+    
+    # Should generate 23 JSON files
+    assert len(latest_files) == 23
+    
+    # Verify all pairs are present
+    json_files = [f[0] for f in latest_files]
+    pairs = set()
+    for f in json_files:
+        # Extract pair from filename: latest_{PAIR}_h7.json
+        name = f.name
+        assert name.startswith("latest_")
+        assert name.endswith("_h7.json")
+        pair = name[7:-8]  # Remove "latest_" and "_h7.json"
+        pairs.add(pair)
+    
+    # Should have 23 unique pairs
+    assert len(pairs) == 23
+    assert "USD_CAD" in pairs
+    assert "EUR_CAD" in pairs
+    assert "GBP_CAD" in pairs
+
+
+def test_build_latest_for_df():
+    """Test build_latest_for_df with filtered dataframe."""
+    df = pd.DataFrame({
+        "obs_date": pd.date_range("2024-01-01", periods=3, freq="D"),
+        "series_id": ["FXUSDCAD"] * 3,
+        "p_up_logreg": [0.7, 0.3, 0.5],
+        "decision": ["UP", "DOWN", "SIDEWAYS"],
+        "confidence": [0.5, 0.7, 0.0],
+    })
+    df = df.set_index("obs_date")
+    
+    artifact = build_latest_for_df(
+        df=df,
+        sha="test123",
+        pair="USD_CAD",
+        horizon="h7",
+        limit_rows=3,
+        threshold=0.6,
+    )
+    
+    assert artifact.pair == "USD_CAD"
+    assert artifact.horizon == "h7"
+    assert len(artifact.rows) == 3
+    assert artifact.rows[0].decision == "UP"
+    assert artifact.rows[1].decision == "DOWN"
+    assert artifact.rows[2].decision == "SIDEWAYS"
 
