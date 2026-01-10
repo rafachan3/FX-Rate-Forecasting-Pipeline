@@ -5,16 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-except ImportError:
-    raise RuntimeError("sendgrid required. Install with: pip install sendgrid")
-
-try:
-    import pandas as pd
-except ImportError:
-    raise RuntimeError("pandas required. Install with: pip install pandas")
+import pandas as pd
 
 from src.pipeline.config import EmailConfig
 
@@ -522,14 +513,22 @@ def send_email(
         body_html: Optional HTML email body
         
     Raises:
-        RuntimeError: If SendGrid send fails
+        RuntimeError: If SendGrid send fails or sendgrid is not installed
         ValueError: If api_key is not configured
     """
+    # Check api_key FIRST before attempting any sendgrid import
     if not cfg.api_key:
         raise ValueError(
             "SendGrid API key not configured. Set email.api_key in config or "
             "SENDGRID_API_KEY environment variable."
         )
+    
+    # Lazy import of sendgrid - only required when actually sending
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+    except ImportError:
+        raise RuntimeError("sendgrid required. Install with: pip install sendgrid")
     
     message = Mail(
         from_email=cfg.from_email,

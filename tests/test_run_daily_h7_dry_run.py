@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -47,13 +48,11 @@ def test_dry_run_validates_config_and_prints_plan(tmp_path: Path, capsys):
             "prefix_latest": "predictions/{horizon}/latest/",
         },
         "email": {
-            "provider": "ses",
-            "region": "us-east-2",
+            "api_key": "${SENDGRID_API_KEY}",
             "from_email": "sender@example.com",
             "to_emails": ["recipient@example.com"],
             "subject_template": "[FX] {horizon} latest — {run_date}",
             "body_format": "text",
-            "aws_profile": None,
         },
     }
     
@@ -62,21 +61,23 @@ def test_dry_run_validates_config_and_prints_plan(tmp_path: Path, capsys):
     
     run_date = "2024-01-15"
     
-    with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
-        mock_today.return_value.isoformat.return_value = run_date
-        
-        with patch("src.pipeline.run_daily_h7.parse_args") as mock_args:
-            mock_args.return_value = MagicMock(
-                config=str(config_path),
-                sync=True,
-                run_date=None,
-                models_dir=None,
-                publish=True,
-                email=True,
-                dry_run=True,  # Enable dry-run
-            )
+    # Set SENDGRID_API_KEY for email config resolution
+    with patch.dict(os.environ, {"SENDGRID_API_KEY": "SG.test-key"}):
+        with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+            mock_today.return_value.isoformat.return_value = run_date
             
-            main()
+            with patch("src.pipeline.run_daily_h7.parse_args") as mock_args:
+                mock_args.return_value = MagicMock(
+                    config=str(config_path),
+                    sync=True,
+                    run_date=None,
+                    models_dir=None,
+                    publish=True,
+                    email=True,
+                    dry_run=True,  # Enable dry-run
+                )
+                
+                main()
     
     # Verify no outputs were created
     assert not runs_dir.exists()

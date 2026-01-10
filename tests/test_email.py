@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,60 @@ from src.pipeline.email import (
     build_email_subject,
     send_email,
 )
+
+
+# =============================================================================
+# Fixtures for mocking sendgrid module
+# =============================================================================
+
+@pytest.fixture
+def mock_sendgrid_module():
+    """Create a fake sendgrid module in sys.modules for testing."""
+    # Create mock sendgrid module structure
+    mock_sendgrid = MagicMock()
+    mock_helpers = MagicMock()
+    
+    # Create a mock Mail class that can be instantiated with any kwargs
+    class MockMail:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            # Set attributes for convenience
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+    
+    mock_helpers.mail.Mail = MockMail
+    
+    # Make SendGridAPIClient return a mock client with .send() method
+    # Store clients by API key so tests can configure them
+    clients_by_key = {}
+    
+    def mock_sg_client_init(api_key):
+        if api_key not in clients_by_key:
+            client = MagicMock()
+            client.api_key = api_key
+            # Default response (success)
+            response = MagicMock()
+            response.status_code = 202
+            response.body = b""
+            client.send = MagicMock(return_value=response)
+            clients_by_key[api_key] = client
+        return clients_by_key[api_key]
+    
+    mock_sendgrid.SendGridAPIClient = MagicMock(side_effect=mock_sg_client_init)
+    # Expose clients dict so tests can access and configure clients
+    mock_sendgrid._clients_by_key = clients_by_key
+    mock_sendgrid.helpers = mock_helpers
+    
+    # Inject into sys.modules
+    sys.modules['sendgrid'] = mock_sendgrid
+    sys.modules['sendgrid.helpers'] = mock_helpers
+    sys.modules['sendgrid.helpers.mail'] = mock_helpers.mail
+    
+    yield mock_sendgrid
+    
+    # Cleanup: remove from sys.modules
+    for key in ['sendgrid', 'sendgrid.helpers', 'sendgrid.helpers.mail']:
+        sys.modules.pop(key, None)
 
 
 # =============================================================================
@@ -228,7 +283,7 @@ def test_build_email_body_html():
 # send_email Tests
 # =============================================================================
 
-def test_send_email_success():
+def test_send_email_success(mock_sendgrid_module):
     """Test successful email send via SendGrid."""
     cfg = EmailConfig(
         api_key="SG.test-key-12345",
@@ -237,21 +292,16 @@ def test_send_email_success():
         subject_template="[FX] {horizon} latest — {run_date}",
     )
     
-    with patch("src.pipeline.email.SendGridAPIClient") as mock_sg_class:
-        mock_client = MagicMock()
-        mock_sg_class.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 202
-        mock_response.body = b""
-        mock_client.send.return_value = mock_response
-        
-        send_email(cfg, "Test Subject", "Test body")
-        
-        mock_sg_class.assert_called_once_with("SG.test-key-12345")
-        assert mock_client.send.called
+    send_email(cfg, "Test Subject", "Test body")
+    
+    # Verify SendGridAPIClient was called with correct API key
+    mock_sendgrid_module.SendGridAPIClient.assert_called_once_with("SG.test-key-12345")
+    # Get the client that was created
+    mock_client = mock_sendgrid_module._clients_by_key["SG.test-key-12345"]
+    assert mock_client.send.called
 
 
-def test_send_email_failure_non_2xx():
+def test_send_email_failure_non_2xx(mock_sendgrid_module):
     """Test that non-2xx response raises RuntimeError."""
     cfg = EmailConfig(
         api_key="SG.test-key",
@@ -260,21 +310,23 @@ def test_send_email_failure_non_2xx():
         subject_template="[FX] {horizon} latest — {run_date}",
     )
     
-    with patch("src.pipeline.email.SendGridAPIClient") as mock_sg_class:
-        mock_client = MagicMock()
-        mock_sg_class.return_value = mock_client
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.body = b"Bad Request"
-        mock_client.send.return_value = mock_response
-        
-        with pytest.raises(RuntimeError) as exc_info:
-            send_email(cfg, "Test Subject", "Test body")
-        
-        assert "400" in str(exc_info.value)
+    # Configure the client to return non-2xx status before calling send_email
+    # The client will be created when SendGridAPIClient is called
+    # Pre-create it with error response
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.body = b"Bad Request"
+    mock_client.send.return_value = mock_response
+    mock_sendgrid_module._clients_by_key["SG.test-key"] = mock_client
+    
+    with pytest.raises(RuntimeError) as exc_info:
+        send_email(cfg, "Test Subject", "Test body")
+    
+    assert "400" in str(exc_info.value)
 
 
-def test_send_email_exception():
+def test_send_email_exception(mock_sendgrid_module):
     """Test that SendGrid exceptions are wrapped in RuntimeError."""
     cfg = EmailConfig(
         api_key="SG.test-key",
@@ -283,21 +335,22 @@ def test_send_email_exception():
         subject_template="[FX] {horizon} latest — {run_date}",
     )
     
-    with patch("src.pipeline.email.SendGridAPIClient") as mock_sg_class:
-        mock_sg_class.side_effect = Exception("Network error")
-        
-        with pytest.raises(RuntimeError) as exc_info:
-            send_email(cfg, "Test Subject", "Test body")
-        
-        assert "Network error" in str(exc_info.value)
+    # Configure mock to raise exception
+    mock_sendgrid_module.SendGridAPIClient.side_effect = Exception("Network error")
+    
+    with pytest.raises(RuntimeError) as exc_info:
+        send_email(cfg, "Test Subject", "Test body")
+    
+    assert "Network error" in str(exc_info.value)
 
 
 def test_send_email_missing_api_key():
-    """Test that missing API key raises ValueError."""
+    """Test that missing API key raises ValueError before importing sendgrid."""
     cfg = MagicMock()
     cfg.api_key = None
     cfg.from_email = "sender@example.com"
     cfg.to_emails = ["recipient@example.com"]
     
+    # Should raise ValueError without attempting sendgrid import
     with pytest.raises(ValueError, match="API key not configured"):
         send_email(cfg, "Test Subject", "Test body")

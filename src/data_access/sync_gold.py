@@ -111,8 +111,9 @@ def sync_gold_from_config(*, cfg: PipelineConfig) -> None:
     for series in series_sorted:
         series_id = series.series_id
         key = cfg.s3_key_for_series(series_id)
-        dst_path = series.gold_local_path
-        
+        # gold_local_path is now a directory, append the standard filename
+        dst_path = str(Path(series.gold_local_path) / "data.parquet")
+        print(f"[sync_gold] {series_id} -> {dst_path} (key={key})") 
         sync_gold_series(
             bucket=cfg.s3.bucket,
             key=key,
@@ -120,3 +121,23 @@ def sync_gold_from_config(*, cfg: PipelineConfig) -> None:
             profile=cfg.s3.profile,
         )
 
+def main() -> None:
+    import argparse
+    from src.pipeline.config import load_pipeline_config
+
+    parser = argparse.ArgumentParser(description="Sync Gold parquets from S3 to local paths.")
+    parser.add_argument("--config", required=True, help="Path to pipeline config JSON (e.g. config/pipeline_h7.json)")
+    parser.add_argument("--run-date", required=False, help="Run date (currently unused by sync, kept for CLI consistency)")
+    args = parser.parse_args()
+
+    cfg = load_pipeline_config(args.config)
+
+    # Minimal visibility so we never debug blind again
+    print(f"[sync_gold] series={len(cfg.series)} bucket={cfg.s3.bucket} profile={cfg.s3.profile}")
+
+    sync_gold_from_config(cfg=cfg)
+    print("[sync_gold] done")
+
+
+if __name__ == "__main__":
+    main()

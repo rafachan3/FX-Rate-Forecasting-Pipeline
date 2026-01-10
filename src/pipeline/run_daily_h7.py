@@ -6,8 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
-from src.artifacts.manifest import build_run_manifest
-from src.artifacts.write_latest import promote_to_latest
+from src.artifacts.manifest import build_run_manifest, get_git_sha
+from src.artifacts.write_latest import build_all_latest, promote_to_latest
 from src.data_access.sync_gold import sync_gold_from_config
 from src.pipeline.config import PipelineConfig, load_pipeline_config
 from src.pipeline.paths import (
@@ -23,6 +23,25 @@ from src.pipeline.email import (
 )
 from src.pipeline.publish_s3 import publish_latest_outputs, publish_run_outputs
 from src.pipeline.run_date import toronto_now_iso, toronto_today
+
+
+def resolve_gold_path(gold_local_path: str) -> Path:
+    """
+    Resolve gold file path, handling both directory and file paths.
+    
+    Args:
+        gold_local_path: Either a directory path or a full file path ending in .parquet
+        
+    Returns:
+        Path to the gold parquet file
+    """
+    path = Path(gold_local_path)
+    if gold_local_path.endswith(".parquet"):
+        # Already a file path, return as-is
+        return path
+    else:
+        # Directory path, append data.parquet
+        return path / "data.parquet"
 
 
 def parse_args() -> argparse.Namespace:
@@ -156,8 +175,9 @@ def main() -> None:
     models_dir = args.models_dir if args.models_dir else config.artifacts.dir
     
     # Create run directory
-    run_dir = get_run_dir(runs_dir=config.outputs.runs_dir, run_date=run_date)
-    Path(run_dir).mkdir(parents=True, exist_ok=True)
+    run_dir_str = get_run_dir(runs_dir=config.outputs.runs_dir, run_date=run_date)
+    run_dir = Path(run_dir_str)
+    run_dir.mkdir(parents=True, exist_ok=True)
     
     # Sync gold (if requested)
     if args.sync:
@@ -173,12 +193,18 @@ def main() -> None:
     
     # Run inference using subprocess (module CLI)
     # Find gold root directory (common parent of all gold files)
-    gold_paths = [Path(s.gold_local_path) for s in config.series]
-    if gold_paths:
-        # Use parent directory of first gold file as root (assumes consistent structure)
+    gold_paths = [resolve_gold_path(s.gold_local_path) for s in config.series]
+    if len(config.series) > 1:
+        # Multiple series: use data/gold as root and match */data.parquet pattern
+        gold_root = Path("data/gold")
+        glob_pattern = "*/data.parquet"
+    elif gold_paths:
+        # Single series: use parent directory of the gold file
         gold_root = gold_paths[0].parent
+        glob_pattern = "**/*.parquet"
     else:
         gold_root = Path("data/gold")
+        glob_pattern = "**/*.parquet"
     
     inference_cmd = [
         "python",
@@ -191,7 +217,7 @@ def main() -> None:
         "--model-dir",
         models_dir,
         "--glob-pattern",
-        "**/*.parquet",
+        glob_pattern,
     ]
     
     result = subprocess.run(inference_cmd, capture_output=True, text=True, check=False)
@@ -201,8 +227,9 @@ def main() -> None:
         )
     
     # Build manifest
+    # Use resolve_gold_path to handle both directory and file paths
     gold_inputs = [
-        {"series_id": s.series_id, "path": s.gold_local_path}
+        {"series_id": s.series_id, "path": str(resolve_gold_path(s.gold_local_path))}
         for s in sorted(config.series, key=lambda x: x.series_id)
     ]
     
@@ -225,16 +252,58 @@ def main() -> None:
     # Write manifest JSON with deterministic formatting
     Path(run_manifest_path).parent.mkdir(parents=True, exist_ok=True)
     with open(run_manifest_path, "w") as f:
-        json.dump(manifest, f, sort_keys=True, indent=2)
+        json.dump(manifest, f, sort_keys=True, indent=2, default=str)
+    
+    # Build all latest artifacts (one JSON/CSV per pair)
+    # Write to run_dir first, then promote to latest_dir
+    git_sha = str(get_git_sha())
+    latest_temp_dir = run_dir / ".latest_temp"
+    latest_files = build_all_latest(
+        outputs_dir=run_dir,
+        sha=git_sha,
+        horizon=config.horizon,
+        limit_rows=365,  # Keep last year of data
+        threshold=0.6,  # Match inference threshold
+        target_dir=latest_temp_dir,  # Write to temp location in run_dir
+    )
+    
+    # Prepare files for promotion: parquet, manifest, and all latest JSON/CSV files
+    files_to_promote = [
+        (run_predictions_path, "decision_predictions_h7.parquet"),
+        (run_manifest_path, "manifest.json"),
+    ]
+    
+    # Add all generated latest JSON and CSV files
+    # latest_files returns (json_path, csv_path) tuples
+    json_count = 0
+    csv_count = 0
+    for json_path, csv_path in latest_files:
+        # Verify files exist before promoting
+        if not json_path.exists():
+            raise FileNotFoundError(f"JSON file missing: {json_path}")
+        if not csv_path.exists():
+            raise FileNotFoundError(f"CSV file missing: {csv_path}")
+        
+        # Add JSON file
+        files_to_promote.append((str(json_path), json_path.name))
+        json_count += 1
+        
+        # Add CSV file
+        files_to_promote.append((str(csv_path), csv_path.name))
+        csv_count += 1
+    
+    print(f"[run_daily_h7] promoting {json_count} JSON + {csv_count} CSV files to latest")
     
     # Atomically promote to latest
     promote_to_latest(
         latest_dir=config.outputs.latest_dir,
-        files=[
-            (run_predictions_path, "decision_predictions_h7.parquet"),
-            (run_manifest_path, "manifest.json"),
-        ],
+        files=files_to_promote,
     )
+    
+    # Cleanup temp directory after successful promotion
+    if latest_temp_dir.exists():
+        import shutil
+        shutil.rmtree(latest_temp_dir)
     
     # Publish to S3 (if requested)
     published_info = ""
@@ -246,7 +315,7 @@ def main() -> None:
         
         # Publish run outputs first
         publish_run_outputs(
-            run_dir=run_dir,
+            run_dir=str(run_dir),
             horizon=config.horizon,
             run_date=run_date,
             bucket=config.publish.bucket,
