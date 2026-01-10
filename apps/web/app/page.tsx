@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import SignupForm from '@/components/SignupForm';
 import Nav from '@/components/Nav';
 import WhatYouReceive from '@/components/WhatYouReceive';
+import LatestSignals from '@/components/LatestSignals';
 
 export default function Home() {
   const heroRef = useRef<HTMLDivElement>(null);
@@ -53,7 +54,8 @@ export default function Home() {
           <div ref={formRef}>
             <SignupForm />
           </div>
-          <div className="max-w-md mx-auto" ref={rightRef}>
+          <div className="max-w-md mx-auto space-y-6" ref={rightRef}>
+            <LatestSignals pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
             <WhatYouReceive />
           </div>
         </div>
@@ -75,8 +77,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column: Static Explanation */}
-          <div className="pt-12" ref={rightRef}>
+          {/* Right Column: Latest Signals + Static Explanation */}
+          <div className="pt-12 space-y-6" ref={rightRef}>
+            <LatestSignals pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
             <WhatYouReceive />
           </div>
         </div>

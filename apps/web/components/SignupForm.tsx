@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import FXPairsInfoModal from './FXPairsInfoModal';
+import { ApiClientError, createSubscription, getHealth, unsubscribe as apiUnsubscribe } from '@/lib/api';
+import UnsubscribeModal from './UnsubscribeModal';
 
 // All FX pairs from Bank of Canada (against CAD)
 type FXPair = 
@@ -50,7 +52,21 @@ export default function SignupForm() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const step2Ref = useRef<HTMLDivElement>(null);
+
+  // Check email status on mount
+  useEffect(() => {
+    getHealth()
+      .then((health) => {
+        setEmailEnabled(health.email_enabled);
+      })
+      .catch(() => {
+        // Silently fail - UI works without this
+        setEmailEnabled(null);
+      });
+  }, []);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -112,21 +128,40 @@ export default function SignupForm() {
     setError(null);
     setLoading(true);
 
-    // Mock submission
-    const formData = {
-      email,
-      pairs: selectedPairs,
-      frequency,
-      ...(frequency === 'weekly' && { weekly_day: weeklyDay }),
-      ...(frequency === 'monthly' && { monthly_rule: monthlyRule }),
-    };
-    
-    console.log('Form submission:', formData);
-    
-    setTimeout(() => {
+    try {
+      // Convert pairs from UI format (USDCAD) to API format (USD_CAD)
+      const pairsForApi = selectedPairs.map(p => p.replace(/([A-Z]{3})([A-Z]{3})/, '$1_$2'));
+      
+      // Convert frequency from UI format to API format
+      const frequencyForApi = frequency.toUpperCase() as 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      
+      // Convert weekly_day from UI format to API format
+      const weeklyDayForApi = weeklyDay ? weeklyDay.toUpperCase().slice(0, 3) as 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' : undefined;
+      
+      // Convert monthly_rule from UI format to API format
+      const monthlyTimingForApi = monthlyRule 
+        ? (monthlyRule === 'first_business_day' ? 'FIRST_BUSINESS_DAY' : 'LAST_BUSINESS_DAY') as 'FIRST_BUSINESS_DAY' | 'LAST_BUSINESS_DAY'
+        : undefined;
+
+      const payload = {
+        email,
+        pairs: pairsForApi,
+        frequency: frequencyForApi,
+        ...(frequency === 'weekly' && weeklyDayForApi && { weekly_day: weeklyDayForApi }),
+        ...(frequency === 'monthly' && monthlyTimingForApi && { monthly_timing: monthlyTimingForApi }),
+      };
+
+      await createSubscription(payload);
       setLoading(false);
       setSuccess(true);
-    }, 1500);
+    } catch (err) {
+      setLoading(false);
+      if (err instanceof ApiClientError) {
+        setError(err.message || 'Failed to save subscription. Please try again.');
+      } else {
+        setError('Failed to save subscription. Please try again.');
+      }
+    }
   };
 
   if (success) {
@@ -149,8 +184,12 @@ export default function SignupForm() {
             </svg>
           </div>
           <div>
-            <p className="text-lg font-semibold text-[#E5E7EB] mb-1">Check your email to confirm</p>
-            <p className="text-sm text-[#94A3B8]">We&apos;ve sent a confirmation link to {email}</p>
+            <p className="text-lg font-semibold text-[#E5E7EB] mb-1">Subscription saved</p>
+            <p className="text-sm text-[#94A3B8]">
+              {emailEnabled === false
+                ? 'Your subscription has been saved. Email delivery will begin once enabled.'
+                : `We've sent a confirmation link to ${email}`}
+            </p>
           </div>
         </div>
       </div>
@@ -213,9 +252,16 @@ export default function SignupForm() {
             </button>
 
             {/* Trust Text Below CTA */}
-            <p className="text-xs text-center text-[#94A3B8]">
-              Free. Cancel anytime.
-            </p>
+            <div className="text-xs text-center text-[#94A3B8] space-y-1">
+              <p>Free. Cancel anytime.</p>
+              <button
+                type="button"
+                onClick={() => setIsUnsubscribeModalOpen(true)}
+                className="text-[#3b82f6] hover:text-[#2563eb] transition-colors duration-150 ease-out underline"
+              >
+                Unsubscribe
+              </button>
+            </div>
 
             {/* FX Pair Selector */}
             <div className="pt-2 border-t border-[#334155]">
@@ -314,6 +360,7 @@ export default function SignupForm() {
         </div>
       </form>
       <FXPairsInfoModal isOpen={isInfoModalOpen} onClose={() => setIsInfoModalOpen(false)} />
+      <UnsubscribeModal isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} />
       </>
     );
   }
@@ -527,6 +574,11 @@ export default function SignupForm() {
             <p className="text-xs text-[#94A3B8] leading-relaxed">
               Research-only. Not trading or financial advice.
             </p>
+            {emailEnabled === false && (
+              <p className="text-xs text-[#94A3B8] leading-relaxed mt-2">
+                Email delivery is temporarily disabled while we finalize SES approval. Your subscription will be saved.
+              </p>
+            )}
           </div>
 
           {/* Error Message */}

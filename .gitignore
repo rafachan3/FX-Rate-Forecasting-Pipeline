@@ -147,6 +147,24 @@ secrets.json
 # =============================================================================
 .aws-sam/
 samconfig.toml
+<<<<<<< ours
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# venvs
+.venv/
+.venv_api/
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+=======
 packaged.yaml
 *.zip
 
@@ -207,3 +225,4 @@ celerybeat.pid
 # IPython
 profile_default/
 ipython_config.py
+>>>>>>> theirs

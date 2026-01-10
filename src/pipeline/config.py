@@ -287,13 +287,13 @@ def load_pipeline_config(path: str | Path) -> PipelineConfig:
     s3_keys = {"bucket", "prefix_template", "filename", "profile"}
     _validate_no_unknown_keys(s3_data, s3_keys, "s3")
     # Handle null profile (JSON null becomes None in Python)
-    profile=s3_data.get("profile"),
+    profile_value = s3_data.get("profile")
 
     s3_config = S3Config(
         bucket=s3_data["bucket"],
         prefix_template=s3_data["prefix_template"],
         filename=s3_data["filename"],
-        profile=s3_profile_value,
+        profile=profile_value,
     )
     
     # Validate and build artifacts config
