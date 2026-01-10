@@ -35,7 +35,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PREDICTIONS }}
+          role-to-assume: arn:aws:iam::851725252715:role/github-actions-fx-predictions-h7
           aws-region: us-east-2
 
       - name: Who am I (AWS)
@@ -59,8 +59,9 @@ jobs:
 
       - name: Fetch model artifacts (S3)
         run: |
+          set -euo pipefail
           mkdir -p models
-          aws s3 cp s3://fx-rate-pipeline-dev/models/h7/logreg_h7_global.joblib models/logreg_h7_global.joblib --only-show-errors
+          aws s3 cp s3://fx-rate-pipeline-dev/models/h7/logreg_h7.joblib models/logreg_h7.joblib --only-show-errors
           aws s3 cp s3://fx-rate-pipeline-dev/models/h7/features_h7.json models/features_h7.json --only-show-errors
           aws s3 cp s3://fx-rate-pipeline-dev/models/h7/metadata_h7.json models/metadata_h7.json --only-show-errors
 
@@ -71,7 +72,7 @@ jobs:
           python3 << 'PYEOF'
           import os, sys
           req = [
-              "models/logreg_h7_global.joblib",
+              "models/logreg_h7.joblib",
               "models/features_h7.json",
               "models/metadata_h7.json",
           ]
@@ -96,8 +97,9 @@ jobs:
       - name: Run pipeline
         id: pipeline
         env:
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
         run: |
+          set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then
             python -m src.pipeline.run_daily_h7 --config config/pipeline_h7.json --sync --publish --email --dry-run
           else

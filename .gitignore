@@ -1,32 +1,153 @@
-# outputs (all generated artifacts)
-outputs/
+# =============================================================================
+# OS Generated Files
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# data (local downloads / exports)
-data/
-!data/.gitkeep
+# =============================================================================
+# Python
+# =============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 
-# notebooks
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =============================================================================
+# Virtual Environments
+# =============================================================================
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm / JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Cursor
+.cursor/
+
+# =============================================================================
+# Jupyter Notebooks
+# =============================================================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
 **/.ipynb_checkpoints/
 
-# python packaging/build
-*.egg-info/
-dist/
-build/
-
-# logs
-*.log
-
-# coverage / pytest
+# =============================================================================
+# Testing / Coverage
+# =============================================================================
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 .pytest_cache/
+pytest_cache/
+nosetests.xml
 
-# dotenv variants
+# =============================================================================
+# Type Checkers
+# =============================================================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+log/
+
+# =============================================================================
+# Environment Variables / Secrets
+# =============================================================================
+.env
 .env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+secrets.yaml
+secrets.json
 
-# SAM build artifacts
+# =============================================================================
+# AWS / SAM / Lambda
+# =============================================================================
 .aws-sam/
 samconfig.toml
+<<<<<<< ours
 
 # macOS
 .DS_Store
@@ -43,3 +164,65 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+=======
+packaged.yaml
+*.zip
+
+# Except committed lambda zips in dist (if needed)
+!src/lambdas/*/dist/*.zip
+
+# =============================================================================
+# Data / Outputs (Project Specific)
+# =============================================================================
+# Generated outputs and artifacts
+outputs/
+
+# Local data downloads/exports
+data/
+!data/.gitkeep
+
+# Model artifacts (if generated locally)
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+
+# Except specific committed artifacts
+!src/artifacts/*.pkl
+
+# =============================================================================
+# Temporary Files
+# =============================================================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+docs/_build/
+site/
+
+# =============================================================================
+# Misc
+# =============================================================================
+# Local configuration overrides
+local_config.py
+local_settings.py
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMaker
+*.sagemaker-uploading
+*.sagemaker-uploaded
+
+# IPython
+profile_default/
+ipython_config.py
+>>>>>>> theirs
