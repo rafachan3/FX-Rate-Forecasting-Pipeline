@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -508,13 +509,11 @@ def test_run_daily_h7_email_sends_after_outputs_exist(tmp_path: Path):
             "latest_dir": str(latest_dir),
         },
         "email": {
-            "provider": "ses",
-            "region": "us-east-2",
+            "api_key": "${SENDGRID_API_KEY}",
             "from_email": "sender@example.com",
             "to_emails": ["recipient@example.com"],
             "subject_template": "[FX] {horizon} latest — {run_date}",
             "body_format": "text",
-            "aws_profile": "fx-gold",
         },
     }
     
@@ -530,44 +529,47 @@ def test_run_daily_h7_email_sends_after_outputs_exist(tmp_path: Path):
         create_minimal_predictions_parquet(run_predictions_path, n_rows=5)
         return MagicMock(returncode=0, stderr="")
     
-    # Mock email functions
-    with patch("src.pipeline.run_daily_h7.send_email_ses") as mock_send_email:
-        # Mock toronto_today to return fixed date
-        with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
-            mock_today.return_value.isoformat.return_value = run_date
-            
-            with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
-                mock_now.return_value = "2024-01-15T14:30:00-05:00"
+    # Mock email function and set SENDGRID_API_KEY for config resolution
+    with patch.dict(os.environ, {"SENDGRID_API_KEY": "SG.test-key"}):
+        with patch("src.pipeline.run_daily_h7.send_email") as mock_send_email:
+            # Mock toronto_today to return fixed date
+            with patch("src.pipeline.run_daily_h7.toronto_today") as mock_today:
+                mock_today.return_value.isoformat.return_value = run_date
                 
-                with patch("subprocess.run", side_effect=mock_inference_subprocess):
-                    # Mock get_git_sha
-                    with patch("src.artifacts.manifest.get_git_sha") as mock_git:
-                        mock_git.return_value = "a" * 40
-                        
-                        # Run main with mocked args and --email flag
-                        with patch(
-                            "src.pipeline.run_daily_h7.parse_args"
-                        ) as mock_args:
-                            mock_args.return_value = MagicMock(
-                                config=str(config_path),
-                                sync=False,
-                                run_date=None,
-                                models_dir=None,
-                                publish=False,
-                                email=True,  # Enable email
-                                dry_run=False,
-                            )
+                with patch("src.pipeline.run_daily_h7.toronto_now_iso") as mock_now:
+                    mock_now.return_value = "2024-01-15T14:30:00-05:00"
+                    
+                    with patch("subprocess.run", side_effect=mock_inference_subprocess):
+                        # Mock get_git_sha
+                        with patch("src.artifacts.manifest.get_git_sha") as mock_git:
+                            mock_git.return_value = "a" * 40
                             
-                            main()
-        
-        # Verify send_email_ses was called after outputs exist
-        assert mock_send_email.called
-        call_args = mock_send_email.call_args
-        assert call_args[0][0].from_email == "sender@example.com"
-        assert call_args[0][0].to_emails == ["recipient@example.com"]
-        assert "[FX] h7 latest — 2024-01-15" in call_args[0][1]  # subject
-        assert "h7" in call_args[0][2]  # body contains horizon
-        assert "2024-01-15" in call_args[0][2]  # body contains run_date
+                            # Run main with mocked args and --email flag
+                            with patch(
+                                "src.pipeline.run_daily_h7.parse_args"
+                            ) as mock_args:
+                                mock_args.return_value = MagicMock(
+                                    config=str(config_path),
+                                    sync=False,
+                                    run_date=None,
+                                    models_dir=None,
+                                    publish=False,
+                                    email=True,  # Enable email
+                                    dry_run=False,
+                                )
+                                
+                                main()
+            
+            # Verify send_email was called after outputs exist
+            assert mock_send_email.called
+            call_args = mock_send_email.call_args
+            # send_email(cfg, subject, body_text, body_html=None)
+            assert call_args[0][0].from_email == "sender@example.com"
+            assert call_args[0][0].to_emails == ["recipient@example.com"]
+            assert call_args[0][1] == "[FX] h7 latest — 2024-01-15"  # subject
+            assert "7-Day" in call_args[0][2]  # body_text contains horizon display name
+            assert "January 15, 2024" in call_args[0][2]  # body_text contains run_date in readable format
+            assert call_args[0][3] is None  # body_html is None for text format
 
 
 def test_run_daily_h7_email_without_config_raises_error(tmp_path: Path):

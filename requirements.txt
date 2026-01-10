@@ -21,3 +21,6 @@ matplotlib==3.10.8
 jupyter==1.1.1
 ipykernel==7.1.0
 xgboost==3.1.2
+
+# Email dependencies
+sendgrid==6.12.5

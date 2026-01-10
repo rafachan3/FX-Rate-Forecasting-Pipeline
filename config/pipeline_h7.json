@@ -118,14 +118,10 @@
     "prefix_latest": "predictions/{horizon}/latest/"
   },
   "email": {
-    "provider": "ses",
-    "region": "us-east-2",
-    "from_email": "north.bound.fx@gmail.com",
-    "to_emails": [
-      "north.bound.fx@gmail.com"
-    ],
-    "subject_template": "[FX] {horizon} latest \u2014 {run_date}",
-    "body_format": "text",
-    "aws_profile": "fx-gold"
+    "api_key": "${SENDGRID_API_KEY}",
+    "from_email": "noreply@northbound-fx.com",
+    "to_emails": ["north.bound.fx@gmail.com"],
+    "subject_template": "📊 FX Signals | {horizon} Forecast — {run_date}",
+    "body_format": "html"
   }
 }
