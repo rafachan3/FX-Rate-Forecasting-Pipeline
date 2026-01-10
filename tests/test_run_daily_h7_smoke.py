@@ -269,7 +269,7 @@ def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
             assert call_args.kwargs["latest_dir"] == str(latest_dir)
             assert call_args.kwargs["horizon"] == "h7"
             assert call_args.kwargs["bucket"] == "fx-rate-pipeline-dev"
-            assert call_args.kwargs["profile"] == "fx-gold"
+            assert call_args.kwargs["profile"] is None
             
             # Verify publish_run was called before publish_latest
             assert mock_publish_run.call_count == 1
