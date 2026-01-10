@@ -99,7 +99,7 @@
     "bucket": "fx-rate-pipeline-dev",
     "prefix_template": "gold/source=BoC/series={series_id}/",
     "filename": "data.parquet",
-    "profile": "fx-gold"
+    "profile": null
   },
   "artifacts": {
     "dir": "models",
