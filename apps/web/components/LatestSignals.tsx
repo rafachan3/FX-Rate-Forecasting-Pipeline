@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ApiClientError, getLatestH7, PredictionItem } from '@/lib/api';
+import SignalBar from './SignalBar';
 
 interface LatestSignalsProps {
   pairs?: string[];
@@ -44,35 +45,9 @@ export default function LatestSignals({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD'
     return () => clearInterval(interval);
   }, [pairs.join(',')]); // Re-fetch if pairs change
 
-  const getDirectionColor = (direction: string) => {
-    switch (direction) {
-      case 'UP':
-        return 'text-[#22C55E]';
-      case 'DOWN':
-        return 'text-[#EF4444]';
-      case 'ABSTAIN':
-        return 'text-[#94A3B8]';
-      default:
-        return 'text-[#94A3B8]';
-    }
-  };
-
-  const getDirectionBadgeBg = (direction: string) => {
-    switch (direction) {
-      case 'UP':
-        return 'bg-[#22C55E]/10 border-[#22C55E]/20 text-[#22C55E]';
-      case 'DOWN':
-        return 'bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]';
-      case 'ABSTAIN':
-        return 'bg-[#94A3B8]/10 border-[#94A3B8]/20 text-[#94A3B8]';
-      default:
-        return 'bg-[#94A3B8]/10 border-[#94A3B8]/20 text-[#94A3B8]';
-    }
-  };
-
   return (
     <div className="rounded-lg border border-[#334155] bg-[#111827] p-6 sm:p-8 transition-all duration-150 ease-out shadow-sm">
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-[#E5E7EB] mb-1">Latest signals</h2>
           <p className="text-xs text-[#94A3B8]">Updated daily · Research-only</p>
@@ -81,10 +56,11 @@ export default function LatestSignals({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD'
         {loading && signals.length === 0 && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between py-2">
+              <div key={i} className="flex items-center gap-4 py-3">
                 <div className="h-4 bg-[#1e293b] rounded w-24 animate-pulse" />
+                <div className="flex-1 h-2 bg-[#1e293b] rounded-full animate-pulse" />
                 <div className="h-4 bg-[#1e293b] rounded w-16 animate-pulse" />
-                <div className="h-4 bg-[#1e293b] rounded w-20 animate-pulse" />
+                <div className="h-4 bg-[#1e293b] rounded w-14 animate-pulse" />
               </div>
             ))}
           </div>
@@ -104,34 +80,16 @@ export default function LatestSignals({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD'
 
         {!loading && !error && signals.length > 0 && (
           <div className="space-y-0">
-            {/* Table header */}
-            <div className="grid grid-cols-3 gap-4 pb-2 border-b border-[#334155] text-xs font-medium text-[#94A3B8]">
-              <div>Pair</div>
-              <div>Signal</div>
-              <div>Confidence</div>
-            </div>
-
-            {/* Table rows */}
+            {/* Signal Bars */}
             <div className="space-y-0">
               {signals.map((item) => (
-                <div
+                <SignalBar
                   key={item.pair}
-                  className="grid grid-cols-3 gap-4 py-3 border-b border-[#334155]/50 last:border-b-0"
-                >
-                  <div className="text-sm font-medium text-[#E5E7EB]">
-                    {item.pair_label || item.pair.replace('_', '/')}
-                  </div>
-                  <div>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getDirectionBadgeBg(item.direction)}`}
-                    >
-                      {item.direction}
-                    </span>
-                  </div>
-                  <div className="text-sm text-[#E5E7EB]">
-                    {Math.round(item.confidence * 100)}%
-                  </div>
-                </div>
+                  pair={item.pair}
+                  pairLabel={item.pair_label}
+                  direction={item.direction}
+                  confidence={item.confidence}
+                />
               ))}
             </div>
 

@@ -5,7 +5,7 @@ export default function WhatYouReceive() {
     <div className="rounded-lg border border-[#334155] bg-[#1e293b] p-6 sm:p-8 transition-all duration-150 ease-out shadow-sm lg:hover:shadow-md lg:hover:shadow-[#3b82f6]/10 lg:hover:-translate-y-1">
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-[#E5E7EB] mb-4">What you&apos;ll receive</h2>
+          <h2 className="text-lg font-semibold text-[#E5E7EB] mb-1">What you&apos;ll receive</h2>
           <div className="space-y-3 text-sm text-[#94A3B8] leading-snug">
             <div className="flex items-start gap-2.5">
               <svg
@@ -21,7 +21,7 @@ export default function WhatYouReceive() {
                   d="M5 13l4 4L19 7"
                 />
               </svg>
-              <p>Directional signal (UP / DOWN / ABSTAIN)</p>
+              <p>Directional signal (UP / DOWN / SIDEWAYS)</p>
             </div>
             <div className="flex items-start gap-2.5">
               <svg

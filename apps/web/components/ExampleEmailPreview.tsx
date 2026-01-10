@@ -1,6 +1,6 @@
 export default function ExampleEmailPreview() {
   const signals = [
-    { pair: 'EUR/CAD', direction: 'ABSTAIN', confidence: 0.75 },
+    { pair: 'EUR/CAD', direction: 'SIDEWAYS', confidence: 0.75 },
     { pair: 'USD/CAD', direction: 'UP', confidence: 0.82 },
     { pair: 'GBP/CAD', direction: 'DOWN', confidence: 0.68 },
   ];
@@ -11,7 +11,7 @@ export default function ExampleEmailPreview() {
         return 'text-[#22C55E]';
       case 'DOWN':
         return 'text-[#EF4444]';
-      case 'ABSTAIN':
+      case 'SIDEWAYS':
         return 'text-[#94A3B8]';
       default:
         return 'text-[#E5E7EB]';

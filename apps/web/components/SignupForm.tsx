@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import FXPairsInfoModal from './FXPairsInfoModal';
-import { ApiClientError, createSubscription, getHealth, unsubscribe as apiUnsubscribe } from '@/lib/api';
-import UnsubscribeModal from './UnsubscribeModal';
+import { ApiClientError, createSubscription, getHealth } from '@/lib/api';
 
 // All FX pairs from Bank of Canada (against CAD)
 type FXPair = 
@@ -52,7 +51,6 @@ export default function SignupForm() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
-  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const step2Ref = useRef<HTMLDivElement>(null);
 
@@ -127,6 +125,13 @@ export default function SignupForm() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    // Validate at least one pair is selected
+    if (selectedPairs.length === 0) {
+      setError('Please select at least one FX pair.');
+      setLoading(false);
+      return;
+    }
 
     try {
       // Convert pairs from UI format (USDCAD) to API format (USD_CAD)
@@ -252,16 +257,9 @@ export default function SignupForm() {
             </button>
 
             {/* Trust Text Below CTA */}
-            <div className="text-xs text-center text-[#94A3B8] space-y-1">
-              <p>Free. Cancel anytime.</p>
-              <button
-                type="button"
-                onClick={() => setIsUnsubscribeModalOpen(true)}
-                className="text-[#3b82f6] hover:text-[#2563eb] transition-colors duration-150 ease-out underline"
-              >
-                Unsubscribe
-              </button>
-            </div>
+            <p className="text-xs text-center text-[#94A3B8]">
+              Free. Cancel anytime.
+            </p>
 
             {/* FX Pair Selector */}
             <div className="pt-2 border-t border-[#334155]">
@@ -272,7 +270,7 @@ export default function SignupForm() {
                     onClick={() => setShowPairSelector(!showPairSelector)}
                     className="flex-1 flex items-center justify-between min-h-[48px] px-3 py-2.5 rounded-md border border-[#334155] bg-[#0f172a] text-sm font-semibold text-[#94A3B8] hover:text-[#E5E7EB] hover:bg-[#1e293b] hover:border-[#475569] transition-all duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:ring-offset-0 focus:ring-offset-[#111827]"
                   >
-                    <span>FX pairs (optional)</span>
+                    <span>FX pairs</span>
                     <svg
                       className={`w-4 h-4 transition-transform duration-150 ease-out ${showPairSelector ? 'rotate-180' : ''}`}
                       fill="none"
@@ -304,7 +302,7 @@ export default function SignupForm() {
                   </button>
                 </div>
                 <p className="text-xs text-[#94A3B8] px-1">
-                  Start with USD/CAD and EUR/CAD. Add more anytime.
+                  Select at least one pair. Start with USD/CAD and EUR/CAD.
                 </p>
                 
                 {/* Selected pairs chips */}
@@ -360,7 +358,6 @@ export default function SignupForm() {
         </div>
       </form>
       <FXPairsInfoModal isOpen={isInfoModalOpen} onClose={() => setIsInfoModalOpen(false)} />
-      <UnsubscribeModal isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} />
       </>
     );
   }
@@ -591,7 +588,7 @@ export default function SignupForm() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || selectedPairs.length === 0}
             className="w-full rounded-md bg-[#3b82f6] px-6 py-3.5 text-base font-medium text-white transition-all duration-150 ease-out hover:bg-[#2563eb] focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:ring-offset-2 focus:ring-offset-[#111827] disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98] min-h-[48px]"
           >
             {loading ? (
