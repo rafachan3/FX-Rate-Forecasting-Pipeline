@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -313,13 +314,18 @@ def main() -> None:
                 "--publish flag provided but publish configuration is missing in config file"
             )
         
+        # CI safeguard: In GitHub Actions (OIDC auth), never use AWS profile
+        publish_profile = config.publish.profile
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            publish_profile = None
+        
         # Publish run outputs first
         publish_run_outputs(
             run_dir=str(run_dir),
             horizon=config.horizon,
             run_date=run_date,
             bucket=config.publish.bucket,
-            profile=config.publish.profile,
+            profile=publish_profile,
             prefix_runs_template=config.publish.prefix_runs_template,
         )
         
@@ -328,7 +334,7 @@ def main() -> None:
             latest_dir=config.outputs.latest_dir,
             horizon=config.horizon,
             bucket=config.publish.bucket,
-            profile=config.publish.profile,
+            profile=publish_profile,
             prefix_latest=config.publish.prefix_latest,
         )
         
