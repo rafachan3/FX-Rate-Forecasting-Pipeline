@@ -9,7 +9,12 @@ declare const process: {
   };
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+/**
+ * API base URL from environment variable.
+ * Falls back to localhost for local development.
+ * Must be set in Vercel production environment variables.
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface HealthResponse {
   ok: boolean;
@@ -117,7 +122,9 @@ async function apiFetch<T>(
 
   const fetchWithRetry = async (attempt: number): Promise<Response> => {
     try {
-      const response = await fetch(`${API_BASE}${path}`, {
+      // Use URL constructor to properly handle query params and path joining
+      const url = new URL(path, API_BASE_URL);
+      const response = await fetch(url.toString(), {
         ...opts,
         signal: controller.signal,
         headers: {
@@ -159,7 +166,7 @@ async function apiFetch<T>(
       }
 
       throw new ApiClientError(
-        errorDetail.message || `HTTP ${response.status}`,
+        errorDetail.message || `HTTP ${response.status}: ${response.statusText}`,
         response.status,
         errorDetail.code,
       );
@@ -171,7 +178,12 @@ async function apiFetch<T>(
       throw error;
     }
     if (error instanceof TypeError || error instanceof DOMException) {
-      throw new ApiClientError("Network error: Unable to reach API", undefined, "NETWORK_ERROR");
+      const apiUrl = API_BASE_URL || "API endpoint";
+      throw new ApiClientError(
+        `Network error: Unable to reach API at ${apiUrl}. Check NEXT_PUBLIC_API_BASE_URL environment variable.`,
+        undefined,
+        "NETWORK_ERROR",
+      );
     }
     throw new ApiClientError("Unexpected error", undefined, "UNKNOWN_ERROR");
   }
@@ -188,8 +200,10 @@ export async function getHealth(): Promise<HealthResponse> {
  * Get latest predictions for pairs.
  */
 export async function getLatestH7(pairs: string[]): Promise<LatestResponse> {
-  const pairsParam = pairs.join(",");
-  return apiFetch<LatestResponse>(`/v1/predictions/h7/latest?pairs=${encodeURIComponent(pairsParam)}`);
+  // Use URL constructor to properly encode query parameters
+  const url = new URL("/v1/predictions/h7/latest", API_BASE_URL);
+  url.searchParams.set("pairs", pairs.join(","));
+  return apiFetch<LatestResponse>(url.pathname + url.search);
 }
 
 /**
