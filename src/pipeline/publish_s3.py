@@ -117,10 +117,11 @@ def publish_latest_outputs(
     prefix_latest: str,
 ) -> None:
     """
-    Publish latest outputs (predictions and manifest) to S3.
+    Publish latest outputs (predictions, manifest, and per-pair JSON/CSV files) to S3.
     
     Args:
-        latest_dir: Local latest directory containing decision_predictions_h7.parquet and manifest.json
+        latest_dir: Local latest directory containing decision_predictions_h7.parquet, manifest.json,
+                   and latest_*_h7.json/csv files
         horizon: Horizon identifier (e.g., "h7")
         bucket: S3 bucket name
         profile: AWS profile name
@@ -150,4 +151,31 @@ def publish_latest_outputs(
     # Upload manifest
     manifest_key = f"{prefix}manifest.json"
     aws_s3_cp(manifest_file, bucket, manifest_key, profile)
+    
+    # Upload all per-pair JSON files
+    json_files = sorted(latest_dir_obj.glob(f"latest_*_{horizon}.json"))
+    json_count = 0
+    json_keys = []
+    for json_file in json_files:
+        json_key = f"{prefix}{json_file.name}"
+        aws_s3_cp(json_file, bucket, json_key, profile)
+        json_count += 1
+        json_keys.append(json_key)
+    
+    # Upload all per-pair CSV files (optional)
+    csv_files = sorted(latest_dir_obj.glob(f"latest_*_{horizon}.csv"))
+    csv_count = 0
+    csv_keys = []
+    for csv_file in csv_files:
+        csv_key = f"{prefix}{csv_file.name}"
+        aws_s3_cp(csv_file, bucket, csv_key, profile)
+        csv_count += 1
+        csv_keys.append(csv_key)
+    
+    # Log upload summary
+    print(f"[publish_latest_outputs] uploaded: 1 parquet, 1 manifest, {json_count} JSON, {csv_count} CSV files")
+    if json_keys:
+        print(f"[publish_latest_outputs] JSON keys: {', '.join([k.split('/')[-1] for k in json_keys[:5]])}{'...' if len(json_keys) > 5 else ''}")
+    if csv_keys:
+        print(f"[publish_latest_outputs] CSV keys: {', '.join([k.split('/')[-1] for k in csv_keys[:5]])}{'...' if len(csv_keys) > 5 else ''}")
 

@@ -9,7 +9,12 @@ declare const process: {
   };
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+/**
+ * API base URL from environment variable.
+ * Falls back to localhost for local development.
+ * Must be set in Vercel production environment variables.
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface HealthResponse {
   ok: boolean;
@@ -117,7 +122,9 @@ async function apiFetch<T>(
 
   const fetchWithRetry = async (attempt: number): Promise<Response> => {
     try {
-      const response = await fetch(`${API_BASE}${path}`, {
+      // Use URL constructor to properly handle query params and path joining
+      const url = new URL(path, API_BASE_URL);
+      const response = await fetch(url.toString(), {
         ...opts,
         signal: controller.signal,
         headers: {
@@ -159,7 +166,7 @@ async function apiFetch<T>(
       }
 
       throw new ApiClientError(
-        errorDetail.message || `HTTP ${response.status}`,
+        errorDetail.message || `HTTP ${response.status}: ${response.statusText}`,
         response.status,
         errorDetail.code,
       );
@@ -171,7 +178,12 @@ async function apiFetch<T>(
       throw error;
     }
     if (error instanceof TypeError || error instanceof DOMException) {
-      throw new ApiClientError("Network error: Unable to reach API", undefined, "NETWORK_ERROR");
+      const apiUrl = API_BASE_URL || "API endpoint";
+      throw new ApiClientError(
+        `Network error: Unable to reach API at ${apiUrl}. Check NEXT_PUBLIC_API_BASE_URL environment variable.`,
+        undefined,
+        "NETWORK_ERROR",
+      );
     }
     throw new ApiClientError("Unexpected error", undefined, "UNKNOWN_ERROR");
   }
@@ -186,10 +198,74 @@ export async function getHealth(): Promise<HealthResponse> {
 
 /**
  * Get latest predictions for pairs.
+ * Uses Next.js API route that fetches from S3 (no external backend required).
  */
 export async function getLatestH7(pairs: string[]): Promise<LatestResponse> {
-  const pairsParam = pairs.join(",");
-  return apiFetch<LatestResponse>(`/v1/predictions/h7/latest?pairs=${encodeURIComponent(pairsParam)}`);
+  // Use relative URL to call Next.js API route
+  const url = new URL("/api/predictions/h7/latest", typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  url.searchParams.set("pairs", pairs.join(","));
+  
+  // Use fetch with timeout and error handling
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  
+  try {
+    const response = await fetch(url.pathname + url.search, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new ApiClientError(
+        errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+        response.status,
+        errorData.code || "HTTP_ERROR",
+      );
+    }
+    
+    const data = await response.json();
+    
+    // Transform response to match LatestResponse interface
+    if (data.ok && data.items) {
+      return {
+        horizon: data.horizon || "h7",
+        as_of_utc: data.as_of_utc || null,
+        run_date: data.run_date || new Date().toISOString().split('T')[0],
+        items: data.items,
+      };
+    }
+    
+    throw new ApiClientError(
+      data.error || "Invalid response format",
+      response.status,
+      "INVALID_RESPONSE",
+    );
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error instanceof ApiClientError) {
+      throw error;
+    }
+    
+    if (error instanceof TypeError || error instanceof DOMException) {
+      throw new ApiClientError(
+        "Network error: Unable to reach API",
+        undefined,
+        "NETWORK_ERROR",
+      );
+    }
+    
+    throw new ApiClientError(
+      "Unexpected error while fetching predictions",
+      undefined,
+      "UNKNOWN_ERROR",
+    );
+  }
 }
 
 /**
