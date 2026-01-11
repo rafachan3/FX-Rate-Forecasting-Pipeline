@@ -29,31 +29,44 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Backend API Configuration
+## S3-backed API (Vercel Production)
 
-This app requires a backend API to fetch FX signals. Configure the API base URL via environment variable.
+The production deployment fetches latest FX signals directly from S3 using a Next.js API route. **No separate backend server is required.**
+
+### Required Environment Variables (Vercel)
+
+Set these in your Vercel project settings (**Settings** → **Environment Variables**):
+
+1. **AWS_ACCESS_KEY_ID** - AWS access key with S3 read permissions
+2. **AWS_SECRET_ACCESS_KEY** - AWS secret key
+3. **AWS_REGION** - AWS region (default: `us-east-1`)
+4. **S3_BUCKET** - S3 bucket name (default: `fx-rate-pipeline-dev`)
+5. **S3_PREDICTIONS_LATEST_PREFIX** - S3 prefix for latest JSON files (default: `predictions/h7/latest/`)
 
 ### Local Development
 
-The app defaults to `http://127.0.0.1:8000` for local development. If your backend runs on a different port, set:
+For local development, you can either:
 
+**Option A: Use AWS credentials**
 ```bash
-export NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
+export AWS_REGION=us-east-2
+export S3_BUCKET=fx-rate-pipeline-dev
 ```
 
-### Production (Vercel)
+**Option B: Use Vercel CLI to pull environment variables**
+```bash
+vercel env pull .env.local
+```
 
-**Required:** Set the `NEXT_PUBLIC_API_BASE_URL` environment variable in your Vercel project settings:
+The Next.js API route at `/api/predictions/h7/latest` will fetch JSON files from S3:
+- Format: `s3://{S3_BUCKET}/{S3_PREDICTIONS_LATEST_PREFIX}latest_{PAIR}_h7.json`
+- Example: `s3://fx-rate-pipeline-dev/predictions/h7/latest/latest_USD_CAD_h7.json`
 
-1. Go to your Vercel project dashboard
-2. Navigate to **Settings** → **Environment Variables**
-3. Add a new variable:
-   - **Name:** `NEXT_PUBLIC_API_BASE_URL`
-   - **Value:** Your deployed backend API URL (e.g., `https://api.example.com`)
-   - **Environment:** Production (and Preview if needed)
-4. Redeploy your application
+### Legacy Backend API (Optional)
 
-**Important:** Without this environment variable, production builds will fail to fetch signals and show "Network error: Unable to reach API" messages.
+If you have a separate backend API, you can still use it by setting `NEXT_PUBLIC_API_BASE_URL`. However, the S3-backed route is the default for production.
 
 ## Deploy on Vercel
 
