@@ -261,7 +261,9 @@ def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
             assert call_args.kwargs["horizon"] == "h7"
             assert call_args.kwargs["run_date"] == run_date
             assert call_args.kwargs["bucket"] == "fx-rate-pipeline-dev"
-            assert call_args.kwargs["profile"] == "fx-gold"
+            # In CI (GITHUB_ACTIONS=true), profile is None; locally it's "fx-gold"
+            expected_profile = None if os.getenv("GITHUB_ACTIONS") == "true" else "fx-gold"
+            assert call_args.kwargs["profile"] == expected_profile
             
             # Verify publish_latest_outputs was called after publish_run_outputs
             assert mock_publish_latest.called
@@ -269,7 +271,8 @@ def test_run_daily_h7_publish_called_after_outputs_exist(tmp_path: Path):
             assert call_args.kwargs["latest_dir"] == str(latest_dir)
             assert call_args.kwargs["horizon"] == "h7"
             assert call_args.kwargs["bucket"] == "fx-rate-pipeline-dev"
-            assert call_args.kwargs["profile"] == "fx-gold"
+            # In CI (GITHUB_ACTIONS=true), profile is None; locally it's "fx-gold"
+            assert call_args.kwargs["profile"] == expected_profile
             
             # Verify publish_run was called before publish_latest
             assert mock_publish_run.call_count == 1
