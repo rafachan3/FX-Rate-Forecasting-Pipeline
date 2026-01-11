@@ -16,6 +16,8 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+
 
 # C extensions
 *.so
@@ -27,8 +29,12 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+# Exception: allow apps/web/lib (Next.js app library code)
+!apps/web/lib/
+!apps/web/lib/**
+
 parts/
 sdist/
 var/
@@ -147,24 +153,6 @@ secrets.json
 # =============================================================================
 .aws-sam/
 samconfig.toml
-<<<<<<< ours
-
-# macOS
-.DS_Store
-
-# IDE
-.idea/
-
-# venvs
-.venv/
-.venv_api/
-
-# Python caches
-__pycache__/
-*.pyc
-.pytest_cache/
-
-=======
 packaged.yaml
 *.zip
 
@@ -226,4 +214,4 @@ celerybeat.pid
 # IPython
 profile_default/
 ipython_config.py
->>>>>>> theirs
+.venv_api/
