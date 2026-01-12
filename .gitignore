@@ -167,7 +167,6 @@ outputs/
 models/
 
 # Local data downloads/exports
-data/
 !data/.gitkeep
 
 # Model artifacts (if generated locally)

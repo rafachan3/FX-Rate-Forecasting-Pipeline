@@ -1,423 +1,223 @@
-# FX Rate Forecasting Pipeline
+# NorthBound FX
 
-This repository contains a research-oriented pipeline for **directional FX forecasting**, currently focused on the **USD/CAD** pair at a **daily (business-day)** frequency.
+[![H7 Daily Pipeline](https://github.com/rafachan3/FX-Rate-Forecasting-Pipeline/actions/workflows/h7_daily.yml/badge.svg)](https://github.com/rafachan3/FX-Rate-Forecasting-Pipeline/actions/workflows/h7_daily.yml)
+[![Live Site](https://img.shields.io/badge/Live-northbound--fx.com-blue)](https://www.northbound-fx.com/)
 
-The project is explicitly framed around:
-- probabilistic **directional prediction** (UP / DOWN),
-- **selective decision-making** via confidence gating,
-- stability, calibration, and interpretability over raw accuracy.
+An end-to-end machine learning pipeline for **directional FX forecasting** with automated daily predictions, email alerts, and a [live web dashboard](https://www.northbound-fx.com/).
 
-This is **not** a point-forecasting system and does not attempt to maximize headline accuracy.
+## 🎯 What It Does
 
----
+Predicts whether currency pairs (against CAD) will go **UP**, **DOWN**, or **SIDEWAYS** over a 7-business-day horizon, with confidence-gated decision-making.
 
-## Project Scope and Framing
+**Key Design Principles:**
+- Probabilistic predictions, not point forecasts
+- Confidence gating: abstain when uncertain rather than guess
+- Calibration and interpretability over raw accuracy
+- Fully automated: data ingestion and ML inference run daily
 
-### Key design choices
-- **Target**: Direction of cumulative return over a 7-business-day horizon.
-- **Output**: Probabilities, not point estimates.
-- **Evaluation philosophy**:
-  - Weak signals are acceptable if they are stable and well-characterized.
-  - Acting less often (abstaining) is preferable to acting noisily.
-  - Decision logic is treated as a first-class layer, separate from modeling.
+**Live at:** [northbound-fx.com](https://www.northbound-fx.com/)
 
----
+### Supported Currency Pairs (23)
 
-## Data Contract
+All pairs are quoted against the Canadian Dollar (CAD):
 
-### FX Pair
-- USD/CAD
+| Americas | Europe | Asia-Pacific | Other |
+|----------|--------|--------------|-------|
+| USD/CAD | EUR/CAD | AUD/CAD | ZAR/CAD |
+| MXN/CAD | GBP/CAD | JPY/CAD | SAR/CAD |
+| BRL/CAD | CHF/CAD | CNY/CAD | |
+| PEN/CAD | NOK/CAD | HKD/CAD | |
+| | SEK/CAD | SGD/CAD | |
+| | TRY/CAD | KRW/CAD | |
+| | RUB/CAD | TWD/CAD | |
+| | | INR/CAD | |
+| | | NZD/CAD | |
+| | | IDR/CAD | |
 
-### Frequency
-- Daily (business days only)
-- Weekend gaps are expected and validated
+## 🏗️ Architecture
 
-### Gold Layer Schema (strict)
-Each gold parquet file must contain:
+<!-- TODO: Replace with actual architecture diagram -->
+![Architecture Diagram](docs/architecture.png)
 
-| Column        | Description                                  |
-|---------------|----------------------------------------------|
-| `obs_date`    | Observation date (business day)              |
-| `series_id`   | Single identifier per file                   |
-| `value`       | FX rate value                                |
-| `prev_value`  | Exact lag-1 value (no gaps, no recomputation)|
+*Architecture diagram coming soon*
 
-Any deviation from this contract is treated as an error.
+The system consists of two automated pipelines:
 
----
+### 1. Data Ingestion Pipeline (AWS Step Functions)
+Runs **weekdays at 5:30 PM ET** via EventBridge — 30 minutes after the Bank of Canada Valet API releases daily FX rates.
 
-## Gold Data Source (Read-Only)
-
-This project consumes **Gold-layer FX data** produced by an upstream ingestion pipeline.
-
-Key properties:
-- Gold data is **authoritative and immutable**
-- This repository **does not generate raw FX data**
-- All modeling, evaluation, and artifacts assume the Gold contract is already satisfied
-
-For local research and development, Gold data can be synced into a local parquet file via a small CLI utility.  
-The local copy is treated as **read-only input** and is excluded from version control.
-
----
-
-## Syncing Gold Data Locally
-
-Gold data can be downloaded locally using the provided sync script.
-
-Example (USD/CAD):
-
-```bash
-python -m scripts.sync_gold \
-  --series FXUSDCAD \
-  --out data/data-USD-CAD.parquet \
-  --with-watermark
 ```
-This command:
-- downloads the latest Gold parquet for the requested series,
-- optionally retrieves the associated watermark metadata,
-- writes a local, UI-ready parquet file for downstream notebooks and scripts.
-
-
-## Production: GitHub Actions Daily Run
-
-The pipeline runs automatically via GitHub Actions on a daily schedule (6:00 AM UTC).
-
-### Required GitHub Secrets
-
-- **`AWS_ROLE_ARN`**: ARN of the IAM role to assume via OIDC (e.g., `arn:aws:iam::123456789012:role/github-actions-h7-pipeline`)
-
-### Required AWS Setup
-
-The IAM role must have the following permissions:
-
-**S3 Permissions:**
-- `s3:GetObject` and `s3:ListBucket` on `gold/*` (for syncing gold data)
-- `s3:GetObject` on `models/h7/*` (for downloading model artifacts)
-- `s3:PutObject` (and optionally `s3:DeleteObject`) on `predictions/h7/*` (for publishing outputs)
-
-**SES Permissions:**
-- `ses:SendEmail` and/or `ses:SendRawEmail` in `us-east-2` region
-
-**OIDC Trust Policy:**
-The role must trust the GitHub OIDC provider:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:OWNER/REPO:*"
-        }
-      }
-    }
-  ]
-}
+BronzeIngestion → BronzeToSilver → SilverToGold
+     (Lambda)         (Lambda)         (Lambda)
 ```
 
-### SES Sandbox Constraints
+Each step has success/failure checks with error handling. Data flows through the medallion architecture (Bronze → Silver → Gold) and is stored in S3.
 
-If using SES in sandbox mode:
-- Both `from_email` and all `to_emails` must be verified identities in SES
-- To move out of sandbox, request production access in the SES console
+### 2. ML Inference Pipeline (GitHub Actions)
+Runs **daily at 6 AM UTC** to generate predictions from the latest gold data.
 
-### Model Artifacts
+- Syncs gold data from S3
+- Runs logistic regression inference
+- Publishes predictions to S3
+- Sends email alerts via SendGrid
 
-The workflow downloads model artifacts from S3 before running inference:
-- **S3 Location**: `s3://fx-rate-pipeline-dev/models/h7/`
-- **Required Files**:
-  - `logreg_h7_global.joblib` - Trained logistic regression model
-  - `features_h7.json` - Feature specification
-  - `metadata_h7.json` - Model metadata (version, training date, etc.)
+## ✨ Features
 
-These artifacts are generated by the training/export scripts (`src/models/train_export_logreg_h7_global.py`) and must be uploaded to S3 **once** before CI can run.
+| Component | Description |
+|-----------|-------------|
+| **Data Pipeline** | Step Functions orchestrating Lambda functions for medallion architecture (Bronze → Silver → Gold) |
+| **ML Pipeline** | Logistic regression with expanding-window backtesting, feature engineering, and probability calibration |
+| **Daily Automation** | EventBridge triggers data ingestion; GitHub Actions runs ML inference |
+| **REST API** | FastAPI on AWS Lambda serving predictions for the web dashboard |
+| **Web Dashboard** | Next.js frontend on Vercel at [northbound-fx.com](https://www.northbound-fx.com/) |
+| **Email Alerts** | Daily forecast summaries via SendGrid (Mon–Fri at 5:30 PM ET) |
 
-**One-time upload (from local machine with AWS profile):**
-```bash
-# Upload model artifacts to S3
-aws s3 cp models/logreg_h7_global.joblib s3://fx-rate-pipeline-dev/models/h7/logreg_h7_global.joblib --profile fx-gold --only-show-errors
-aws s3 cp models/features_h7.json s3://fx-rate-pipeline-dev/models/h7/features_h7.json --profile fx-gold --only-show-errors
-aws s3 cp models/metadata_h7.json s3://fx-rate-pipeline-dev/models/h7/metadata_h7.json --profile fx-gold --only-show-errors
+## 🛠️ Tech Stack
+
+**Data Engineering**
+- AWS Step Functions (orchestration)
+- AWS Lambda (Bronze → Silver → Gold transformations)
+- AWS EventBridge (scheduling)
+- AWS S3 (data lake)
+- Bank of Canada Valet API (data source)
+
+**ML & Analysis**
+- Python 3.12, scikit-learn, pandas, NumPy, PyArrow
+- Jupyter notebooks for research and backtesting
+
+**API & Backend**
+- FastAPI on AWS Lambda + API Gateway
+- Neon Postgres (subscriptions)
+
+**CI/CD & Deployment**
+- GitHub Actions with OIDC authentication
+- Vercel (frontend)
+- SendGrid (email delivery)
+
+**Frontend**
+- Next.js 14, TypeScript, Tailwind CSS
+
+## 📁 Project Structure
+
 ```
-
-**Note**: After initial upload, artifacts are only re-uploaded when the model is retrained. The CI workflow downloads them on every run.
-
-### Manual Trigger
-
-The workflow can be manually triggered via GitHub Actions UI:
-- Go to Actions → H7 Daily Pipeline → Run workflow
-- Optionally enable "Dry run mode" to validate config without executing
-
-### Workflow Artifacts
-
-Outputs are uploaded as workflow artifacts (retained for 7 days) for debugging:
-- `outputs/runs/{run_date}/` - Run-specific outputs
-- `outputs/latest/` - Latest promoted outputs
-
-## Repository Structure
-
-```text
-FX-Rate-Forecasting-Pipeline
-│
-├── config/
-│   └── pipeline_h7.json              # pipeline configuration
-│
-├── data/
-│   └── data-USD-CAD.parquet          # gold-layer FX data (local, ignored)
-│
-├── notebooks/
-│   ├── 01_gold_loader_and_qc.ipynb
-│   ├── 02_direction_backtest_baselines.ipynb
-│   ├── 03_direction_feature_engineering.ipynb
-│   ├── 04_logistic_regression_direction.ipynb
-│   ├── 05_tree_model_direction.ipynb
-│   ├── 06_decision_policy_confidence_gating.ipynb
-│   └── 07_probability_calibration.ipynb
-│
+FX-Rate-Forecasting-Pipeline/
+├── apps/web/              # Next.js frontend (deployed to Vercel)
+├── config/                # Pipeline configuration (pairs, S3 paths, email)
+├── data/gold/             # Sample gold data for local experimentation
+│   └── FXUSDCAD/          # USD/CAD sample included in repo
+├── infra/sam/             # AWS SAM templates for API deployment
+├── models/                # Trained model artifacts (.joblib, .json)
+├── notebooks/             # Research & experimentation (01-07)
+├── outputs/               # Generated predictions and manifests (git-ignored)
+├── scripts/               # CLI utilities
 ├── src/
-│   ├── artifacts/
-│   │   └── write_latest.py           # UI-ready artifact writer
-│   └── pipeline/
-│       ├── config.py                 # configuration schema and loader
-│       └── run_date.py                # Toronto timezone utilities
-│
-├── outputs/                          # generated artifacts (git-ignored)
-│
-├── requirements.txt                  # minimal, intentional dependencies
-├── README.md
-└── .gitignore
-
+│   ├── api/               # FastAPI application
+│   ├── artifacts/         # Manifest building, artifact promotion
+│   ├── data_access/       # S3 sync, gold data loading
+│   ├── features/          # Feature engineering (h7)
+│   ├── lambdas/           # Step Functions Lambda handlers
+│   │   ├── bronze_ingestion/   # Bank of Canada API → Bronze
+│   │   ├── bronze_to_silver/   # Bronze → Silver transformation
+│   │   └── silver_to_gold/     # Silver → Gold transformation
+│   ├── models/            # Training, export, inference
+│   ├── pipeline/          # Daily runner, config, email, S3 publish
+│   └── signals/           # Decision policy (confidence gating)
+└── tests/                 # Unit and integration tests
 ```
 
----
+## 🚀 Getting Started
 
-## Pipeline Configuration
+### Prerequisites
 
-The pipeline uses a strict configuration schema defined in `config/pipeline_h7.json`. This configuration specifies:
+- Python 3.12+
+- Node.js 18+ (for frontend development)
 
-- **Horizon**: Must be `"h7"` (7-business-day horizon)
-- **Timezone**: Must be `"America/Toronto"` (all run dates use Toronto wall clock)
-- **Series**: List of FX series with local Gold data paths
-- **S3**: S3 bucket and key template for Gold data storage
-- **Artifacts**: Model artifact locations (model, features, metadata files)
-- **Outputs**: Output directory paths for runs and latest artifacts
-
-The configuration loader (`src.pipeline.config.load_pipeline_config`) enforces strict validation:
-- Rejects unknown keys (prevents silent config drift)
-- Validates all required fields are non-empty
-- Ensures S3 prefix templates contain `{series_id}` placeholder
-- Validates filenames end with `.parquet` where required
-
-### Run Date Utilities
-
-Run dates are determined using **America/Toronto timezone** (wall clock time). The `src.pipeline.run_date` module provides:
-
-- `toronto_today()`: Returns today's date in Toronto timezone
-- `toronto_now_iso()`: Returns current datetime as ISO string in Toronto timezone
-
-These utilities ensure deterministic run date calculation regardless of where the pipeline executes (e.g., UTC servers).
-
-### Testing Pipeline Components
-
-Run tests for pipeline configuration and run date utilities:
+### Installation
 
 ```bash
-# Test run date utilities
-python -m pytest tests/test_run_date_toronto.py -v
+git clone https://github.com/rafachan3/FX-Rate-Forecasting-Pipeline.git
+cd FX-Rate-Forecasting-Pipeline
 
-# Test configuration schema and loader
-python -m pytest tests/test_pipeline_config.py -v
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest -q
 ```
 
----
-## Notebook Overview
+### Running the Notebooks
 
-### 01 — Gold Loader and QC
-- Loads gold-layer parquet data.
-- Enforces schema, ordering, and lag integrity.
-- Validates date continuity (business days only).
+The repository includes sample gold data for USD/CAD at `data/gold/FXUSDCAD/data.parquet`. You can run all research notebooks using this sample:
 
----
+```bash
+jupyter notebook notebooks/
+```
 
-### 02 — Direction Backtest Baselines
-- Defines directional target (7-day horizon).
-- Implements naive and heuristic baselines.
-- Introduces rolling backtest protocol.
-- Evaluates confidence buckets and coverage vs accuracy.
+The notebooks cover the complete ML journey from data QC through model training and calibration.
 
----
+### Data Access
 
-### 03 — Direction Feature Engineering
-- Leakage-safe feature construction.
-- Feature groups include:
-  - lagged returns,
-  - rolling volatility,
-  - momentum and z-scores,
-  - regime flags,
-  - calendar effects.
-- Explicit validation against gold data contract.
+> **Note:** The S3 bucket containing full gold-layer data is private. The included USD/CAD sample file is sufficient for exploring the notebooks and understanding the pipeline.
+>
+> If you need access to the complete dataset or production pipeline, please contact the repository owners.
 
----
+## 📓 Research Notebooks
 
-### 04 — Logistic Regression (Directional Anchor)
-- Expanding-window, monthly refit backtest.
-- Logistic regression used as an interpretable probability anchor.
-- Evaluation includes:
-  - overall metrics,
-  - confidence buckets,
-  - coefficient stability over time.
+| # | Notebook | Purpose |
+|---|----------|---------|
+| 01 | Gold Loader & QC | Data loading, schema validation, date continuity checks |
+| 02 | Direction Backtest Baselines | Naive baselines, rolling backtest protocol |
+| 03 | Feature Engineering | Leakage-safe features: lagged returns, volatility, momentum, regime flags |
+| 04 | Logistic Regression | Expanding-window monthly refit, coefficient stability |
+| 05 | Tree-Based Models | HistGradientBoosting comparison (no material improvement) |
+| 06 | Decision Policy | Confidence gating, coverage vs accuracy tradeoffs |
+| 07 | Probability Calibration | Isotonic regression, ECE, policy-aware calibration |
 
----
+## 🌐 API
 
-### 05 — Tree-Based Direction Model
-- Controlled non-linear model (HistGradientBoosting).
-- Same backtest protocol as logistic regression.
-- Feature importance inspection.
-- Conclusion: non-linear capacity does not materially improve the signal.
+The API powers the [NorthBound website](https://www.northbound-fx.com/) and is publicly accessible.
 
----
+See [README_API.md](README_API.md) for full documentation.
 
-### 06 — Decision Policy and Confidence Gating
-- Introduces a **decision layer** on top of model probabilities.
-- Evaluates selective prediction strategies:
-  - single-model confidence thresholds,
-  - agreement gating (logreg + tree),
-  - balanced top-k confidence selection.
-- Metrics are computed **only on acted subsets**:
-  - conditional accuracy,
-  - log loss,
-  - Brier score,
-  - ECE (Expected Calibration Error).
-- Includes:
-  - coverage tradeoff curves,
-  - regime-conditional diagnostics,
-  - rolling 1Y stability analysis,
-  - worst-year stress tests.
-- Locks a default operating policy based on empirical tradeoffs.
+**Key Endpoints:**
 
----
+```bash
+# Health check
+GET /v1/health
 
-### 07 — Post-hoc Probability Calibration
+# Latest predictions
+GET /v1/predictions/h7/latest?pairs=USD_CAD,EUR_CAD
 
-This notebook evaluates **post-hoc probability calibration** under a strictly out-of-sample protocol. Calibration is treated as a probability-quality tool, not a signal-enhancement technique.
+# Subscribe to email alerts
+POST /v1/subscriptions
+```
 
-#### Calibration protocol
-- Expanding-window monthly refit.
-- Rolling calibration window drawn strictly from past data.
-- Calibrators fit only on historical predictions.
-- No leakage into test months.
+## 📊 Output Format
 
-#### Methods
-- Isotonic regression with safe fallback to identity when data is insufficient.
+Each prediction includes:
 
-#### Evaluation focuses on
-- LogLoss, Brier score, and ECE (10- and 20-bin).
-- Reliability (calibration) curves.
-- Impact of calibration on decision policies from Notebook 06.
+| Field | Description |
+|-------|-------------|
+| `pair` | Currency pair (e.g., USD_CAD) |
+| `direction` | UP, DOWN, or SIDEWAYS |
+| `confidence` | Model confidence [0, 1] |
+| `obs_date` | Observation date |
+| `horizon_bdays` | Forecast horizon (7 business days) |
 
-#### Key findings
-- Calibration materially improves probability reliability (lower ECE).
-- No improvement in directional accuracy.
-- Threshold-gating policies may degrade under calibration.
-- Probability treatment must be **policy-aware**.
+## 🤝 Contributors
 
-#### Operational takeaway
-- Logistic regression:
-  - raw probabilities preferred for threshold gating,
-  - calibrated probabilities preferred for ranking-based policies.
-- Tree models:
-  - calibrated probabilities preferred in all cases.
+Built by **Rafael Chantres Garcia** and **Ian Vicente Aburto**.
+
+## ⚠️ Disclaimer
+
+This project is for **educational and portfolio purposes only**. It does not constitute financial advice and should not be used for actual trading decisions. Past performance does not guarantee future results.
 
 ---
 
-## Output Artifacts (UI Contract)
-
-The pipeline produces stable artifacts intended for UI consumption and scheduled inference runs.  
-All artifacts are written to `outputs/` and are ignored by git.
-
-### Latest Promotion (Atomic)
-
-Artifacts are promoted to `outputs/latest/` using atomic file operations:
-- Multiple files (parquet, JSON manifest) are promoted atomically using temporary directories and `os.replace`
-- If any source file is missing or any copy fails, the latest directory remains unchanged
-- Each run writes a manifest (`manifest.json`) recording run metadata, file hashes, and data ranges
-
-### Canonical daily artifact (UI-facing)
-
-**`outputs/predictions_latest_h7.parquet`**
-
-One row per business day (`obs_date`) containing probabilities, decisions, and metadata.
-
-#### Stable schema
-- `obs_date`
-- `pair`
-- `horizon_bdays`
-- `model_version` (git SHA)
-- `p_up_logreg_raw`, `p_up_tree_raw`
-- `p_up_logreg_cal`, `p_up_tree_cal`
-- `policy_name`
-- `policy_params` (JSON)
-- `action` ∈ {`UP`, `DOWN`, `ABSTAIN`}
-- `confidence` ∈ [0, 1]
-- `coverage_target` (nullable)
-- `regime` (nullable)
-
----
-
-### Run metadata
-
-**`outputs/run_metadata_h7.json`**
-
-- `pair`
-- `horizon_bdays`
-- `as_of_date`
-- `data_start`, `data_end`
-- `model_version`
-- `calibration_enabled`
-- `policy_name`
-- `policy_params`
-
----
-
-### Research and diagnostic artifacts
-
-Generated by notebooks for diagnostics and visualization:
-- `outputs/decision_policy_sweep.csv`
-- `outputs/decision_policy_by_regime.csv`
-- `outputs/calibration_metrics_overall.csv`
-- `outputs/calibration_reliability_bins.csv`
-- `outputs/calibration_policy_sweep.csv`
-
----
-
-## Current Status and Next Steps
-
-The research pipeline is feature-complete and stable:
-- directional modeling,
-- confidence-gated decision policies,
-- regime-aware diagnostics,
-- post-hoc probability calibration.
-
-The signal is weak but stable, and decision behavior is well-characterized.
-
-**Next steps are operational, not statistical**
-- scheduled inference (e.g., AWS),
-- artifact materialization for UI consumption,
-- monitoring for data drift and policy stability.
-
-No further model complexity is planned.
-
----
-
-## Disclaimer
-
-This repository is for research and experimentation only.  
-It does not constitute trading advice or a production trading system.
+<p align="center">
+  <a href="https://www.northbound-fx.com/">northbound-fx.com</a>
+</p>
