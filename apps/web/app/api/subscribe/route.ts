@@ -50,7 +50,7 @@ function isValidEmail(email: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, frequency, consent } = body;
+    const { email, pairs, frequency, weekly_day, monthly_timing } = body;
 
     // Validate email
     if (!email || typeof email !== 'string' || !isValidEmail(email)) {
@@ -60,41 +60,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate consent
-    if (!consent || consent !== true) {
+    // Validate pairs
+    if (!pairs || !Array.isArray(pairs) || pairs.length === 0) {
       return NextResponse.json(
-        { ok: false, error: 'Consent checkbox must be checked' },
+        { ok: false, error: 'At least one FX pair must be selected' },
         { status: 400 }
       );
     }
 
-    // Validate frequency (default to 'WED' if not provided)
-    const validFrequency = frequency || 'WED';
-    if (!['WED', 'FRI'].includes(validFrequency)) {
+    // Validate frequency
+    const validFrequencies = ['DAILY', 'WEEKLY', 'MONTHLY'];
+    if (!frequency || !validFrequencies.includes(frequency)) {
       return NextResponse.json(
-        { ok: false, error: 'Invalid frequency' },
+        { ok: false, error: `Frequency must be one of: ${validFrequencies.join(', ')}` },
         { status: 400 }
       );
+    }
+
+    // Validate weekly_day if frequency is WEEKLY
+    if (frequency === 'WEEKLY' && weekly_day) {
+      const validDays = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
+      if (!validDays.includes(weekly_day)) {
+        return NextResponse.json(
+          { ok: false, error: `Weekly day must be one of: ${validDays.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate monthly_timing if frequency is MONTHLY
+    if (frequency === 'MONTHLY' && monthly_timing) {
+      const validTimings = ['FIRST_BUSINESS_DAY', 'LAST_BUSINESS_DAY'];
+      if (!validTimings.includes(monthly_timing)) {
+        return NextResponse.json(
+          { ok: false, error: `Monthly timing must be one of: ${validTimings.join(', ')}` },
+          { status: 400 }
+        );
+      }
     }
 
     // Read existing subscribers
     const subscribers = await readSubscribers();
 
     // Check if email already exists
-    const existingSubscriber = subscribers.find((s) => s.email === email);
+    const existingSubscriber = subscribers.find((s) => s.email.toLowerCase() === email.toLowerCase());
     if (existingSubscriber) {
       // Update existing subscriber
-      existingSubscriber.frequency = validFrequency;
+      existingSubscriber.frequency = frequency;
       existingSubscriber.status = 'active';
       existingSubscriber.created_at = new Date().toISOString();
+      // Update pairs (store as comma-separated string for compatibility)
+      existingSubscriber.pair = pairs.join(',');
     } else {
       // Create new subscriber
       const newSubscriber: Subscriber = {
         id: randomUUID(),
-        email,
-        pair: 'USDCAD',
-        frequency: validFrequency,
-        consent: true,
+        email: email.toLowerCase(),
+        pair: pairs.join(','), // Store pairs as comma-separated string
+        frequency,
+        consent: true, // Implicit consent by submitting form
         status: 'active',
         created_at: new Date().toISOString(),
         unsubscribe_token: randomUUID(),
@@ -105,7 +129,13 @@ export async function POST(request: NextRequest) {
     // Write back to file
     await writeSubscribers(subscribers);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      status: 'created_or_updated',
+      email: email.toLowerCase(),
+      subscription_id: existingSubscriber?.id || subscribers[subscribers.length - 1].id,
+      email_enabled: false, // File-based storage doesn't support email yet
+      message: 'Subscription saved successfully.',
+    });
   } catch (error) {
     console.error('Subscription error:', error);
     return NextResponse.json(
