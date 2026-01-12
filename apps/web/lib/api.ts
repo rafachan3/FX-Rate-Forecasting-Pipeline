@@ -10,11 +10,9 @@ declare const process: {
 };
 
 /**
- * API base URL from environment variable.
- * Falls back to localhost for local development.
- * Must be set in Vercel production environment variables.
+ * All API calls use same-origin Next.js API routes.
+ * No external backend required.
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export interface HealthResponse {
   ok: boolean;
@@ -110,6 +108,7 @@ export class ApiClientError extends Error {
 
 /**
  * Fetch with timeout, retry, and error handling.
+ * Uses same-origin Next.js API routes (no external backend).
  */
 async function apiFetch<T>(
   path: string,
@@ -122,9 +121,8 @@ async function apiFetch<T>(
 
   const fetchWithRetry = async (attempt: number): Promise<Response> => {
     try {
-      // Use URL constructor to properly handle query params and path joining
-      const url = new URL(path, API_BASE_URL);
-      const response = await fetch(url.toString(), {
+      // Use relative path for same-origin Next.js API routes
+      const response = await fetch(path, {
         ...opts,
         signal: controller.signal,
         headers: {
@@ -178,9 +176,8 @@ async function apiFetch<T>(
       throw error;
     }
     if (error instanceof TypeError || error instanceof DOMException) {
-      const apiUrl = API_BASE_URL || "API endpoint";
       throw new ApiClientError(
-        `Network error: Unable to reach API at ${apiUrl}. Check NEXT_PUBLIC_API_BASE_URL environment variable.`,
+        `Network error: Unable to reach API endpoint.`,
         undefined,
         "NETWORK_ERROR",
       );
@@ -191,9 +188,10 @@ async function apiFetch<T>(
 
 /**
  * Health check endpoint.
+ * Uses same-origin Next.js API route.
  */
 export async function getHealth(): Promise<HealthResponse> {
-  return apiFetch<HealthResponse>("/v1/health");
+  return apiFetch<HealthResponse>("/api/health");
 }
 
 /**
@@ -270,11 +268,12 @@ export async function getLatestH7(pairs: string[]): Promise<LatestResponse> {
 
 /**
  * Create or update subscription.
+ * Uses same-origin Next.js API route.
  */
 export async function createSubscription(
   payload: SubscriptionRequest,
 ): Promise<SubscriptionResponse> {
-  return apiFetch<SubscriptionResponse>("/v1/subscriptions", {
+  return apiFetch<SubscriptionResponse>("/api/subscribe", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -282,10 +281,11 @@ export async function createSubscription(
 
 /**
  * Unsubscribe email.
+ * Uses same-origin Next.js API route.
  */
 export async function unsubscribe(email: string): Promise<UnsubscribeResponse> {
-  return apiFetch<UnsubscribeResponse>("/v1/subscriptions/unsubscribe", {
-    method: "POST",
+  return apiFetch<UnsubscribeResponse>("/api/subscribe", {
+    method: "DELETE",
     body: JSON.stringify({ email }),
   });
 }
