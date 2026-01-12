@@ -115,3 +115,44 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { email } = body;
+
+    // Validate email
+    if (!email || typeof email !== 'string' || !isValidEmail(email)) {
+      return NextResponse.json(
+        { ok: false, error: 'Invalid email address' },
+        { status: 400 }
+      );
+    }
+
+    // Read existing subscribers
+    const subscribers = await readSubscribers();
+
+    // Find and mark as inactive
+    const subscriber = subscribers.find((s) => s.email.toLowerCase() === email.toLowerCase());
+    if (subscriber) {
+      subscriber.status = 'inactive';
+      await writeSubscribers(subscribers);
+      return NextResponse.json({
+        status: 'unsubscribed',
+        email: subscriber.email,
+      });
+    }
+
+    // Email not found - return success for idempotency
+    return NextResponse.json({
+      status: 'unsubscribed',
+      email: email.toLowerCase(),
+    });
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    return NextResponse.json(
+      { ok: false, error: 'Server error. Please try again later.' },
+      { status: 500 }
+    );
+  }
+}
+
