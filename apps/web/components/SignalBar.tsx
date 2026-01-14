@@ -1,6 +1,6 @@
 'use client';
 
-import { mapDirection } from '@/lib/api';
+import { mapDirection, getDisplayDirection } from '@/lib/api';
 
 interface SignalBarProps {
   pair: string;
@@ -27,16 +27,7 @@ export default function SignalBar({ pair, pairLabel, direction, confidence }: Si
   };
 
   const getDirectionLabel = () => {
-    switch (mappedDirection) {
-      case 'UP':
-        return 'UP';
-      case 'DOWN':
-        return 'DOWN';
-      case 'SIDEWAYS':
-        return 'SIDEWAYS';
-      default:
-        return 'SIDEWAYS';
-    }
+    return getDisplayDirection(mappedDirection);
   };
 
   const getDirectionColor = () => {

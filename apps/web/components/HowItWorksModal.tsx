@@ -52,10 +52,10 @@ export default function HowItWorksModal({ isOpen, onClose }: HowItWorksModalProp
             <p className="font-medium text-[#E5E7EB]">Each signal includes a directional output:</p>
             <div className="space-y-2 pl-2 border-l-2 border-[#334155]">
               <p>
-                <span className="text-[#22C55E] font-medium">UP</span> — The model predicts the exchange rate will increase (the first currency will strengthen against CAD).
+                <span className="text-[#22C55E] font-medium">BULLISH</span> — The model predicts the exchange rate will increase (the first currency will strengthen against CAD).
               </p>
               <p>
-                <span className="text-[#EF4444] font-medium">DOWN</span> — The model predicts the exchange rate will decrease (the first currency will weaken against CAD).
+                <span className="text-[#EF4444] font-medium">BEARISH</span> — The model predicts the exchange rate will decrease (the first currency will weaken against CAD).
               </p>
               <p>
                 <span className="text-[#94A3B8] font-medium">SIDEWAYS</span> — The model has low confidence and recommends no directional position.

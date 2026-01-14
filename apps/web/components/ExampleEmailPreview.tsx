@@ -1,3 +1,5 @@
+import { getDisplayDirection } from '@/lib/api';
+
 export default function ExampleEmailPreview() {
   const signals = [
     { pair: 'EUR/CAD', direction: 'SIDEWAYS', confidence: 0.75 },
@@ -41,7 +43,7 @@ export default function ExampleEmailPreview() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[#94A3B8]">Direction:</span>
                     <span className={`text-xs font-medium ${getDirectionColor(signal.direction)}`}>
-                      {signal.direction}
+                      {getDisplayDirection(signal.direction)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
