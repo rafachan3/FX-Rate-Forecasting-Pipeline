@@ -21,7 +21,7 @@ export default function WhatYouReceive() {
                   d="M5 13l4 4L19 7"
                 />
               </svg>
-              <p>Directional signal (UP / DOWN / SIDEWAYS)</p>
+              <p>Directional signal (BULLISH / BEARISH / SIDEWAYS)</p>
             </div>
             <div className="flex items-start gap-2.5">
               <svg

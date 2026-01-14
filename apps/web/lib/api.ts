@@ -53,6 +53,25 @@ export function mapDirection(direction: string): "UP" | "DOWN" | "SIDEWAYS" {
   return "SIDEWAYS";
 }
 
+/**
+ * Translates internal direction values to user-facing display labels.
+ * Converts "UP" -> "BULLISH", "DOWN" -> "BEARISH" for better terminology.
+ * Internal logic still uses "UP"/"DOWN" for consistency with backend.
+ */
+export function getDisplayDirection(direction: string): string {
+  const mapped = mapDirection(direction);
+  switch (mapped) {
+    case "UP":
+      return "BULLISH";
+    case "DOWN":
+      return "BEARISH";
+    case "SIDEWAYS":
+      return "SIDEWAYS";
+    default:
+      return "SIDEWAYS";
+  }
+}
+
 export interface LatestResponse {
   horizon: string;
   as_of_utc: string | null;
