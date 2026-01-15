@@ -35,7 +35,7 @@ export interface PredictionItem {
   };
   history?: Array<{
     obs_date: string;
-    direction: "UP" | "DOWN" | "SIDEWAYS";
+    direction: "UP" | "DOWN" | "SIDEWAYS" | "ABSTAIN";
     confidence: number;
   }>;
 }

@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ApiClientError, getLatestH7, PredictionItem, getDisplayDirection } from '@/lib/api';
 
+// Direction types
+type ApiDirection = 'UP' | 'DOWN' | 'SIDEWAYS' | 'ABSTAIN';
+type UiDirection = 'UP' | 'DOWN' | 'SIDEWAYS';
+
 interface SignalOverviewPanelProps {
   pairs?: string[];
 }
@@ -10,9 +14,26 @@ interface SignalOverviewPanelProps {
 interface SignalRow {
   pair: string;
   pairLabel: string;
-  direction: 'UP' | 'DOWN' | 'SIDEWAYS';
+  direction: UiDirection;
   confidence: number;
-  trendDots: Array<'UP' | 'DOWN' | 'SIDEWAYS'>; // Last 7 days
+  trendDots: Array<UiDirection>; // Last 7 days
+}
+
+/**
+ * Normalize API direction to UI direction.
+ * Maps ABSTAIN -> SIDEWAYS for display consistency.
+ */
+function normalizeDirection(direction: ApiDirection): UiDirection {
+  switch (direction) {
+    case 'ABSTAIN':
+      return 'SIDEWAYS';
+    case 'UP':
+    case 'DOWN':
+    case 'SIDEWAYS':
+      return direction;
+    default:
+      return 'SIDEWAYS'; // Defensive fallback
+  }
 }
 
 export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD'] }: SignalOverviewPanelProps) {
@@ -30,12 +51,10 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
       
       // Transform PredictionItem to SignalRow
       const signalRows: SignalRow[] = response.items.map((item) => {
-        const mappedDirection = item.direction === 'ABSTAIN' ? 'SIDEWAYS' : 
-                                item.direction === 'UP' ? 'UP' : 
-                                item.direction === 'DOWN' ? 'DOWN' : 'SIDEWAYS';
+        const mappedDirection = normalizeDirection(item.direction as ApiDirection);
         
         // Use real history if available, otherwise fallback to repeating latest direction
-        let trendDots: Array<'UP' | 'DOWN' | 'SIDEWAYS'>;
+        let trendDots: Array<UiDirection>;
         if (item.history && item.history.length > 0) {
           // History comes sorted newest first, reverse to get oldest first for display
           const sortedHistory = [...item.history].reverse();
@@ -43,10 +62,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
           // Take last 7 days from history (oldest to newest)
           const historyDirections = sortedHistory
             .slice(-7)
-            .map(h => {
-              const dir = h.direction === 'ABSTAIN' ? 'SIDEWAYS' : h.direction;
-              return dir as 'UP' | 'DOWN' | 'SIDEWAYS';
-            });
+            .map(h => normalizeDirection(h.direction as ApiDirection));
           
           // Pad to 7 if we have fewer than 7 days (pad at the beginning with latest direction)
           while (historyDirections.length < 7) {
@@ -58,7 +74,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
           // Fallback: repeat latest direction for 7 dots
           // TODO: This fallback is used when API doesn't return history
           // Consider enhancing API to always return history when available
-          trendDots = Array(7).fill(mappedDirection) as Array<'UP' | 'DOWN' | 'SIDEWAYS'>;
+          trendDots = Array(7).fill(mappedDirection) as Array<UiDirection>;
         }
         
         return {
