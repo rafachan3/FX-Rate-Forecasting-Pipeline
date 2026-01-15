@@ -177,10 +177,9 @@ export async function DELETE(request: NextRequest) {
 
     // Can unsubscribe by email or by token
     if (token) {
-      // Unsubscribe by token (from email link)
+      // Unsubscribe by token (from email link) - delete the subscription entirely
       const result = await sql`
-        UPDATE subscriptions 
-        SET is_active = false 
+        DELETE FROM subscriptions 
         WHERE unsubscribe_token = ${token}
         RETURNING email
       `;
@@ -200,7 +199,7 @@ export async function DELETE(request: NextRequest) {
       });
     }
 
-    // Unsubscribe by email
+    // Unsubscribe by email - delete the subscription entirely
     if (!email || typeof email !== 'string' || !isValidEmail(email)) {
       return NextResponse.json(
         { ok: false, error: 'Invalid email address' },
@@ -211,8 +210,7 @@ export async function DELETE(request: NextRequest) {
     const emailLower = email.toLowerCase().trim();
 
     await sql`
-      UPDATE subscriptions 
-      SET is_active = false 
+      DELETE FROM subscriptions 
       WHERE email = ${emailLower}
     `;
 
