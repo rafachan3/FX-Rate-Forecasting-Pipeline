@@ -101,6 +101,8 @@ jobs:
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          WEBSITE_URL: ${{ secrets.WEBSITE_URL }}
         run: |
           set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then
