@@ -188,7 +188,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
             <div className="hidden sm:grid sm:grid-cols-[minmax(80px,auto)_minmax(100px,auto)_1fr_minmax(80px,auto)] sm:gap-4 pb-2 mb-2 border-b border-[#334155]/30">
               <div className="text-xs text-[#94A3B8] font-medium">Pair</div>
               <div className="text-xs text-[#94A3B8] font-medium">7-day trend</div>
-              <div className="text-xs text-[#94A3B8] font-medium">Today</div>
+              <div className="text-xs text-[#94A3B8] font-medium">Today's confidence score</div>
               <div className="text-xs text-[#94A3B8] font-medium text-right">Direction</div>
             </div>
             
@@ -238,7 +238,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
 
                   {/* Confidence Bar */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs text-[#94A3B8] sm:hidden">Today:</span>
+                    <span className="text-xs text-[#94A3B8] sm:hidden">Today's confidence score:</span>
                     <div className="flex-1 h-2 bg-[#1e293b] rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${getDirectionBgColor(signal.direction)}`}
@@ -284,12 +284,6 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
           </div>
         )}
 
-        {/* Footer */}
-        {lastUpdated && (
-          <p className="text-xs text-[#94A3B8] pt-2 border-t border-[#334155]">
-            Updated daily · Research-only
-          </p>
-        )}
       </div>
     </div>
   );
