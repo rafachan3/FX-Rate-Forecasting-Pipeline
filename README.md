@@ -119,6 +119,12 @@ FX-Rate-Forecasting-Pipeline/
 ├── notebooks/             # Research & experimentation (01-07)
 ├── outputs/               # Generated predictions and manifests (git-ignored)
 ├── scripts/               # CLI utilities
+│   ├── backfill_bronze.py     # Backfill bronze layer from Bank of Canada API
+│   ├── backfill_silver.py     # Backfill silver layer from bronze
+│   ├── backfill_gold.py       # Backfill gold layer from silver
+│   ├── generate_latest.py     # Generate latest predictions
+│   ├── preview_email.py       # Preview email output
+│   └── sync_gold.py           # Sync gold data from S3
 ├── src/
 │   ├── api/               # FastAPI application
 │   ├── artifacts/         # Manifest building, artifact promotion
