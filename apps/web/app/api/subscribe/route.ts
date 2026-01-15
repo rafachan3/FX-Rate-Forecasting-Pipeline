@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         ${frequency},
         ${frequency === 'WEEKLY' ? weekly_day : null},
         ${frequency === 'MONTHLY' ? monthly_timing : null},
-        ${sql.array(pairs)},
+        ${pairs}::text[],
         ${timezoneValue},
         NOW()
       )
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         frequency = ${frequency},
         weekly_day = ${frequency === 'WEEKLY' ? weekly_day : null},
         monthly_timing = ${frequency === 'MONTHLY' ? monthly_timing : null},
-        pairs = ${sql.array(pairs)},
+        pairs = ${pairs}::text[],
         timezone = ${timezoneValue},
         updated_at = NOW()
     `;
