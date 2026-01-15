@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import SignupForm from '@/components/SignupForm';
 import Nav from '@/components/Nav';
 import WhatYouReceive from '@/components/WhatYouReceive';
-import LatestSignals from '@/components/LatestSignals';
+import SignalOverviewPanel from '@/components/SignalOverviewPanel';
 import UnsubscribeModal from '@/components/UnsubscribeModal';
 
 export default function Home() {
@@ -57,7 +57,7 @@ export default function Home() {
             <SignupForm />
           </div>
           <div className="max-w-md mx-auto space-y-6" ref={rightRef}>
-            <LatestSignals pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
+            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD', 'AUD_CAD', 'JPY_CAD']} />
             <WhatYouReceive />
           </div>
         </div>
@@ -79,9 +79,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Column: Latest Signals + What You'll Receive */}
+          {/* Right Column: Signal Overview + What You'll Receive */}
           <div className="space-y-6" ref={rightRef}>
-            <LatestSignals pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
+            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD', 'AUD_CAD', 'JPY_CAD']} />
             <WhatYouReceive />
           </div>
         </div>
