@@ -98,8 +98,9 @@ async function fetchLatestJson(pair: string): Promise<LatestArtifact | null> {
 
 /**
  * Transform LatestArtifact to PredictionItem format expected by frontend.
+ * Optionally includes last 7 days of history for trend visualization.
  */
-function transformToPredictionItem(artifact: LatestArtifact): {
+function transformToPredictionItem(artifact: LatestArtifact, includeHistory: boolean = false): {
   pair: string;
   pair_label: string;
   generated_at: string;
@@ -108,6 +109,7 @@ function transformToPredictionItem(artifact: LatestArtifact): {
   confidence: number;
   model: string;
   raw: { p_up?: number };
+  history?: Array<{ obs_date: string; direction: "UP" | "DOWN" | "SIDEWAYS"; confidence: number }>;
 } | null {
   if (!artifact.rows || artifact.rows.length === 0) {
     return null;
@@ -121,6 +123,42 @@ function transformToPredictionItem(artifact: LatestArtifact): {
   });
   
   const latestRow = sortedRows[0];
+  
+  // Extract last 7 days of history if requested
+  let history: Array<{ obs_date: string; direction: "UP" | "DOWN" | "SIDEWAYS"; confidence: number }> | undefined;
+  if (includeHistory && sortedRows.length > 1) {
+    const last7Rows = sortedRows.slice(0, 7);
+    history = last7Rows.map((row) => {
+      let rowDirection: "UP" | "DOWN" | "SIDEWAYS";
+      let rowConfidence: number;
+      
+      if (row.decision !== null && row.decision !== undefined) {
+        rowDirection = mapActionToDirection(row.decision);
+        rowConfidence = row.confidence ?? computeConfidence(row.p_up_logreg);
+      } else if (row.action_logreg) {
+        rowDirection = mapActionToDirection(row.action_logreg);
+        rowConfidence = computeConfidence(row.p_up_logreg);
+      } else {
+        const pUp = row.p_up_logreg ?? 0.5;
+        if (pUp >= 0.6) {
+          rowDirection = "UP";
+          rowConfidence = pUp;
+        } else if (pUp <= 0.4) {
+          rowDirection = "DOWN";
+          rowConfidence = 1 - pUp;
+        } else {
+          rowDirection = "SIDEWAYS";
+          rowConfidence = 0;
+        }
+      }
+      
+      return {
+        obs_date: row.obs_date || '',
+        direction: rowDirection,
+        confidence: rowConfidence,
+      };
+    });
+  }
   
   // Use decision/confidence if available, otherwise derive from action_logreg/p_up_logreg
   let direction: "UP" | "DOWN" | "SIDEWAYS";
@@ -147,7 +185,7 @@ function transformToPredictionItem(artifact: LatestArtifact): {
     }
   }
   
-  return {
+  const result: any = {
     pair: artifact.pair,
     pair_label: formatPairLabel(artifact.pair),
     generated_at: artifact.generated_at,
@@ -159,6 +197,12 @@ function transformToPredictionItem(artifact: LatestArtifact): {
       p_up: latestRow.p_up_logreg ?? undefined,
     },
   };
+  
+  if (history) {
+    result.history = history;
+  }
+  
+  return result;
 }
 
 export async function GET(request: NextRequest) {
@@ -182,6 +226,9 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Check if history is requested
+    const includeHistory = searchParams.get('include_history') === 'true';
+    
     // Fetch all pairs in parallel
     const fetchPromises = pairs.map(async (pair) => {
       try {
@@ -189,7 +236,7 @@ export async function GET(request: NextRequest) {
         if (!artifact) {
           return { pair, data: null, error: 'File not found in S3' };
         }
-        const item = transformToPredictionItem(artifact);
+        const item = transformToPredictionItem(artifact, includeHistory);
         return { pair, data: item, error: null };
       } catch (error: any) {
         return {

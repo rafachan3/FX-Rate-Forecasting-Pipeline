@@ -33,6 +33,11 @@ export interface PredictionItem {
   raw?: {
     p_up?: number;
   };
+  history?: Array<{
+    obs_date: string;
+    direction: "UP" | "DOWN" | "SIDEWAYS";
+    confidence: number;
+  }>;
 }
 
 /**
@@ -216,11 +221,16 @@ export async function getHealth(): Promise<HealthResponse> {
 /**
  * Get latest predictions for pairs.
  * Uses Next.js API route that fetches from S3 (no external backend required).
+ * @param pairs Array of pair codes (e.g., ["USD_CAD", "EUR_CAD"])
+ * @param includeHistory If true, includes last 7 days of history for each pair
  */
-export async function getLatestH7(pairs: string[]): Promise<LatestResponse> {
+export async function getLatestH7(pairs: string[], includeHistory: boolean = false): Promise<LatestResponse> {
   // Use relative URL to call Next.js API route
   const url = new URL("/api/predictions/h7/latest", typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   url.searchParams.set("pairs", pairs.join(","));
+  if (includeHistory) {
+    url.searchParams.set("include_history", "true");
+  }
   
   // Use fetch with timeout and error handling
   const controller = new AbortController();
