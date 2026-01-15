@@ -191,7 +191,6 @@ def fetch_active_subscribers(run_date: Optional[date] = None) -> List[Subscriber
                     sp.timezone
                 FROM subscriptions s
                 JOIN subscription_preferences sp ON s.id = sp.subscription_id
-                WHERE s.is_active = true
                 ORDER BY s.email
             """)
             

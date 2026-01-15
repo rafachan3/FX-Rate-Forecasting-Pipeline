@@ -81,13 +81,13 @@ export async function POST(request: NextRequest) {
     let unsubscribeToken: string;
 
     if (existingResult.rows.length > 0) {
-      // Update existing subscription - reactivate if inactive
+      // Update existing subscription
       subscriptionId = existingResult.rows[0].id;
       unsubscribeToken = existingResult.rows[0].unsubscribe_token;
 
       await sql`
         UPDATE subscriptions 
-        SET is_active = true, verified_at = NOW()
+        SET verified_at = NOW()
         WHERE id = ${subscriptionId}
       `;
 
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
       unsubscribeToken = generateUnsubscribeToken();
 
       const insertResult = await sql`
-        INSERT INTO subscriptions (email, is_active, unsubscribe_token, created_at)
-        VALUES (${emailLower}, true, ${unsubscribeToken}, NOW())
+        INSERT INTO subscriptions (email, unsubscribe_token, created_at)
+        VALUES (${emailLower}, ${unsubscribeToken}, NOW())
         RETURNING id
       `;
       subscriptionId = insertResult.rows[0].id;

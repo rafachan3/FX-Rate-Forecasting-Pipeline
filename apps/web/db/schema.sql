@@ -7,12 +7,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   email VARCHAR(255) UNIQUE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   verified_at TIMESTAMP WITH TIME ZONE,
-  is_active BOOLEAN DEFAULT true NOT NULL,
   unsubscribe_token VARCHAR(64) UNIQUE NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_email ON subscriptions(email);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_is_active ON subscriptions(is_active);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_unsubscribe_token ON subscriptions(unsubscribe_token);
 
 -- Subscription preferences table
