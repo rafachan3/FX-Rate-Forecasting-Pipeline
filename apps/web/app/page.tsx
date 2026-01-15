@@ -57,7 +57,7 @@ export default function Home() {
             <SignupForm />
           </div>
           <div className="max-w-md mx-auto space-y-6" ref={rightRef}>
-            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
+            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD', 'AUD_CAD', 'JPY_CAD']} />
             <WhatYouReceive />
           </div>
         </div>
@@ -81,7 +81,7 @@ export default function Home() {
 
           {/* Right Column: Signal Overview + What You'll Receive */}
           <div className="space-y-6" ref={rightRef}>
-            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD']} />
+            <SignalOverviewPanel pairs={['USD_CAD', 'EUR_CAD', 'GBP_CAD', 'AUD_CAD', 'JPY_CAD']} />
             <WhatYouReceive />
           </div>
         </div>

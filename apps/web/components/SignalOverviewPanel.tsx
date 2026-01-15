@@ -36,7 +36,7 @@ function normalizeDirection(direction: ApiDirection): UiDirection {
   }
 }
 
-export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD'] }: SignalOverviewPanelProps) {
+export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GBP_CAD', 'AUD_CAD', 'JPY_CAD'] }: SignalOverviewPanelProps) {
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +153,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
         {/* Loading State */}
         {loading && signals.length === 0 && (
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex items-center gap-4 py-3 border-b border-[#334155]/50 last:border-b-0">
                 <div className="h-4 bg-[#1e293b] rounded w-20 animate-pulse" />
                 <div className="flex gap-1">
@@ -184,6 +184,14 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
         {/* Signal Rows */}
         {!loading && !error && signals.length > 0 && (
           <div className="space-y-0">
+            {/* Column Headers (hidden on mobile, shown on sm+) */}
+            <div className="hidden sm:grid sm:grid-cols-[minmax(80px,auto)_minmax(100px,auto)_1fr_minmax(80px,auto)] sm:gap-4 pb-2 mb-2 border-b border-[#334155]/30">
+              <div className="text-xs text-[#94A3B8] font-medium">Pair</div>
+              <div className="text-xs text-[#94A3B8] font-medium">7-day trend</div>
+              <div className="text-xs text-[#94A3B8] font-medium">Today</div>
+              <div className="text-xs text-[#94A3B8] font-medium text-right">Direction</div>
+            </div>
+            
             {signals.map((signal, index) => {
               const confidencePercent = Math.round(signal.confidence * 100);
               const displayDirection = getDisplayDirection(signal.direction);
@@ -191,42 +199,46 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
               return (
                 <div
                   key={signal.pair}
-                  className={`flex items-center gap-3 sm:gap-4 py-3 border-b border-[#334155]/50 last:border-b-0 ${
+                  className={`flex flex-col sm:grid sm:grid-cols-[minmax(80px,auto)_minmax(100px,auto)_1fr_minmax(80px,auto)] sm:items-center gap-2 sm:gap-4 py-3 border-b border-[#334155]/50 last:border-b-0 ${
                     index === 0 ? 'pt-0' : ''
                   }`}
                 >
                   {/* Pair Name */}
-                  <div className="flex-shrink-0 w-16 sm:w-20 md:w-24">
+                  <div className="flex-shrink-0">
                     <span className="text-sm font-medium text-[#E5E7EB] whitespace-nowrap">
                       {signal.pairLabel}
                     </span>
                   </div>
 
                   {/* Trend Dots (7 days) */}
-                  <div className="flex gap-1.5 flex-shrink-0">
-                    {signal.trendDots.map((dotDirection, dotIndex) => {
-                      // Opacity gradient: oldest (faint, 0.3) to newest (solid, 1.0)
-                      // dotIndex 0 = oldest, dotIndex 6 = newest
-                      const opacity = 0.3 + (dotIndex / (signal.trendDots.length - 1)) * 0.7;
-                      const color = dotDirection === 'UP' ? '#22C55E' : 
-                                   dotDirection === 'DOWN' ? '#EF4444' : '#F59E0B';
-                      
-                      return (
-                        <div
-                          key={dotIndex}
-                          className="w-2 h-2 rounded-full transition-opacity duration-200"
-                          style={{
-                            backgroundColor: color,
-                            opacity: signal.trendDots.length === 1 ? 1 : opacity,
-                          }}
-                          title={`Day ${dotIndex + 1}: ${getDisplayDirection(dotDirection)}`}
-                        />
-                      );
-                    })}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-[#94A3B8] sm:hidden">7-day trend:</span>
+                    <div className="flex gap-1.5">
+                      {signal.trendDots.map((dotDirection, dotIndex) => {
+                        // Opacity gradient: oldest (faint, 0.3) to newest (solid, 1.0)
+                        // dotIndex 0 = oldest, dotIndex 6 = newest
+                        const opacity = 0.3 + (dotIndex / (signal.trendDots.length - 1)) * 0.7;
+                        const color = dotDirection === 'UP' ? '#22C55E' : 
+                                     dotDirection === 'DOWN' ? '#EF4444' : '#F59E0B';
+                        
+                        return (
+                          <div
+                            key={dotIndex}
+                            className="w-2 h-2 rounded-full transition-opacity duration-200"
+                            style={{
+                              backgroundColor: color,
+                              opacity: signal.trendDots.length === 1 ? 1 : opacity,
+                            }}
+                            title={`Day ${dotIndex + 1}: ${getDisplayDirection(dotDirection)}`}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Confidence Bar */}
-                  <div className="flex-1 flex items-center gap-2 min-w-0 sm:min-w-[120px]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-[#94A3B8] sm:hidden">Today:</span>
                     <div className="flex-1 h-2 bg-[#1e293b] rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${getDirectionBgColor(signal.direction)}`}
@@ -236,7 +248,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
                   </div>
 
                   {/* Direction Label */}
-                  <div className="flex-shrink-0 w-16 sm:w-20 md:w-24 text-right">
+                  <div className="flex-shrink-0 sm:text-right">
                     <span className={`text-sm font-medium ${getDirectionColor(signal.direction)} whitespace-nowrap`}>
                       {displayDirection}
                     </span>
