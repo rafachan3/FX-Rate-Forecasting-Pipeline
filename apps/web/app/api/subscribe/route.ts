@@ -1,46 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import { join } from 'path';
-import { randomUUID } from 'crypto';
-
-const SUBSCRIBERS_FILE = join(process.cwd(), '.local', 'subscribers.json');
-
-interface Subscriber {
-  id: string;
-  email: string;
-  pair: string;
-  frequency: string;
-  consent: boolean;
-  status: string;
-  created_at: string;
-  unsubscribe_token: string;
-}
-
-async function ensureSubscribersFile() {
-  const dir = join(process.cwd(), '.local');
-  try {
-    await fs.access(dir);
-  } catch {
-    await fs.mkdir(dir, { recursive: true });
-  }
-  
-  try {
-    await fs.access(SUBSCRIBERS_FILE);
-  } catch {
-    await fs.writeFile(SUBSCRIBERS_FILE, JSON.stringify([], null, 2));
-  }
-}
-
-async function readSubscribers(): Promise<Subscriber[]> {
-  await ensureSubscribersFile();
-  const content = await fs.readFile(SUBSCRIBERS_FILE, 'utf-8');
-  return JSON.parse(content);
-}
-
-async function writeSubscribers(subscribers: Subscriber[]) {
-  await ensureSubscribersFile();
-  await fs.writeFile(SUBSCRIBERS_FILE, JSON.stringify(subscribers, null, 2));
-}
+import { sql } from '@/lib/db';
 
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,7 +9,7 @@ function isValidEmail(email: string): boolean {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, pairs, frequency, weekly_day, monthly_timing } = body;
+    const { email, pairs, frequency, weekly_day, monthly_timing, timezone } = body;
 
     // Validate email
     if (!email || typeof email !== 'string' || !isValidEmail(email)) {
@@ -78,9 +37,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate weekly_day if frequency is WEEKLY
-    if (frequency === 'WEEKLY' && weekly_day) {
+    if (frequency === 'WEEKLY') {
       const validDays = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
-      if (!validDays.includes(weekly_day)) {
+      if (!weekly_day || !validDays.includes(weekly_day)) {
         return NextResponse.json(
           { ok: false, error: `Weekly day must be one of: ${validDays.join(', ')}` },
           { status: 400 }
@@ -89,9 +48,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate monthly_timing if frequency is MONTHLY
-    if (frequency === 'MONTHLY' && monthly_timing) {
+    if (frequency === 'MONTHLY') {
       const validTimings = ['FIRST_BUSINESS_DAY', 'LAST_BUSINESS_DAY'];
-      if (!validTimings.includes(monthly_timing)) {
+      if (!monthly_timing || !validTimings.includes(monthly_timing)) {
         return NextResponse.json(
           { ok: false, error: `Monthly timing must be one of: ${validTimings.join(', ')}` },
           { status: 400 }
@@ -99,41 +58,56 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Read existing subscribers
-    const subscribers = await readSubscribers();
+    const emailLower = email.toLowerCase();
+    const timezoneValue = timezone || 'America/Toronto';
 
-    // Check if email already exists
-    const existingSubscriber = subscribers.find((s) => s.email.toLowerCase() === email.toLowerCase());
-    if (existingSubscriber) {
-      // Update existing subscriber
-      existingSubscriber.frequency = frequency;
-      existingSubscriber.status = 'active';
-      existingSubscriber.created_at = new Date().toISOString();
-      // Update pairs (store as comma-separated string for compatibility)
-      existingSubscriber.pair = pairs.join(',');
-    } else {
-      // Create new subscriber
-      const newSubscriber: Subscriber = {
-        id: randomUUID(),
-        email: email.toLowerCase(),
-        pair: pairs.join(','), // Store pairs as comma-separated string
+    // Upsert subscription (insert or update, set is_active = true)
+    const subscriptionResult = await sql`
+      INSERT INTO subscriptions (email, is_active)
+      VALUES (${emailLower}, true)
+      ON CONFLICT (email) 
+      DO UPDATE SET is_active = true
+      RETURNING id
+    `;
+
+    const subscriptionId = subscriptionResult.rows[0].id;
+
+    // Upsert subscription preferences
+    await sql`
+      INSERT INTO subscription_preferences (
+        subscription_id,
         frequency,
-        consent: true, // Implicit consent by submitting form
-        status: 'active',
-        created_at: new Date().toISOString(),
-        unsubscribe_token: randomUUID(),
-      };
-      subscribers.push(newSubscriber);
-    }
-
-    // Write back to file
-    await writeSubscribers(subscribers);
+        weekly_day,
+        monthly_timing,
+        pairs,
+        timezone,
+        updated_at
+      )
+      VALUES (
+        ${subscriptionId},
+        ${frequency},
+        ${frequency === 'WEEKLY' ? weekly_day : null},
+        ${frequency === 'MONTHLY' ? monthly_timing : null},
+        ${sql.array(pairs)},
+        ${timezoneValue},
+        NOW()
+      )
+      ON CONFLICT (subscription_id)
+      DO UPDATE SET
+        frequency = ${frequency},
+        weekly_day = ${frequency === 'WEEKLY' ? weekly_day : null},
+        monthly_timing = ${frequency === 'MONTHLY' ? monthly_timing : null},
+        pairs = ${sql.array(pairs)},
+        timezone = ${timezoneValue},
+        updated_at = NOW()
+    `;
 
     return NextResponse.json({
+      ok: true,
       status: 'created_or_updated',
-      email: email.toLowerCase(),
-      subscription_id: existingSubscriber?.id || subscribers[subscribers.length - 1].id,
-      email_enabled: false, // File-based storage doesn't support email yet
+      email: emailLower,
+      subscription_id: subscriptionId.toString(),
+      email_enabled: true,
       message: 'Subscription saved successfully.',
     });
   } catch (error) {
@@ -158,24 +132,21 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Read existing subscribers
-    const subscribers = await readSubscribers();
+    const emailLower = email.toLowerCase();
 
-    // Find and mark as inactive
-    const subscriber = subscribers.find((s) => s.email.toLowerCase() === email.toLowerCase());
-    if (subscriber) {
-      subscriber.status = 'inactive';
-      await writeSubscribers(subscribers);
-      return NextResponse.json({
-        status: 'unsubscribed',
-        email: subscriber.email,
-      });
-    }
+    // Soft delete: set is_active = false
+    const result = await sql`
+      UPDATE subscriptions
+      SET is_active = false
+      WHERE email = ${emailLower}
+      RETURNING id
+    `;
 
-    // Email not found - return success for idempotency
+    // Return success even if email not found (idempotency)
     return NextResponse.json({
+      ok: true,
       status: 'unsubscribed',
-      email: email.toLowerCase(),
+      email: emailLower,
     });
   } catch (error) {
     console.error('Unsubscribe error:', error);
@@ -185,4 +156,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-
