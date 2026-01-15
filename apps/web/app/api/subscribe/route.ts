@@ -61,6 +61,10 @@ export async function POST(request: NextRequest) {
     const emailLower = email.toLowerCase();
     const timezoneValue = timezone || 'America/Toronto';
 
+    // Convert pairs array to CSV string for SQL parameterization
+    const pairsArr = Array.isArray(pairs) ? (pairs as string[]) : [];
+    const pairsCsv: string | null = pairsArr.length > 0 ? pairsArr.join(',') : null;
+
     // Upsert subscription (insert or update, set is_active = true)
     const subscriptionResult = await sql`
       INSERT INTO subscriptions (email, is_active)
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
         ${frequency},
         ${frequency === 'WEEKLY' ? weekly_day : null},
         ${frequency === 'MONTHLY' ? monthly_timing : null},
-        ${pairs}::text[],
+        COALESCE(string_to_array(${pairsCsv}, ','), '{}'::text[]),
         ${timezoneValue},
         NOW()
       )
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
         frequency = ${frequency},
         weekly_day = ${frequency === 'WEEKLY' ? weekly_day : null},
         monthly_timing = ${frequency === 'MONTHLY' ? monthly_timing : null},
-        pairs = ${pairs}::text[],
+        pairs = COALESCE(string_to_array(${pairsCsv}, ','), '{}'::text[]),
         timezone = ${timezoneValue},
         updated_at = NOW()
     `;
