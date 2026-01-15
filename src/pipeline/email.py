@@ -90,6 +90,23 @@ def build_email_subject(cfg: EmailConfig, horizon: str, run_date: str) -> str:
     return cfg.subject_template.format(horizon=horizon, run_date=run_date)
 
 
+def _normalize_pair_to_series_id(pair: str) -> str:
+    """
+    Convert database pair format (USD_CAD) to series_id format (FXUSDCAD).
+    
+    Examples:
+        USD_CAD -> FXUSDCAD
+        EUR_CAD -> FXEURCAD
+        FXUSDCAD -> FXUSDCAD (already normalized)
+    """
+    if pair.startswith("FX") and "_" not in pair:
+        return pair
+    if "_" in pair:
+        base, quote = pair.split("_", 1)
+        return f"FX{base}{quote}"
+    return pair
+
+
 def _extract_predictions_data(
     predictions_file: Path,
     filter_pairs: Optional[List[str]] = None,
@@ -99,7 +116,8 @@ def _extract_predictions_data(
     
     Args:
         predictions_file: Path to predictions parquet file
-        filter_pairs: Optional list of series_ids to include (if None, include all)
+        filter_pairs: Optional list of pairs to include (if None, include all).
+                      Accepts both USD_CAD and FXUSDCAD formats.
     
     Returns:
         List of dicts with series_id, p_up, action, date_str, sorted by series_id
@@ -114,10 +132,15 @@ def _extract_predictions_data(
             f"Available columns: {sorted(df_pred.columns)}"
         )
     
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
+    
     predictions = []
     for series_id in sorted(df_pred["series_id"].unique()):
         # Filter by pairs if specified
-        if filter_pairs is not None and series_id not in filter_pairs:
+        if normalized_filter is not None and series_id not in normalized_filter:
             continue
             
         series_df = df_pred[df_pred["series_id"] == series_id]
@@ -200,6 +223,11 @@ def build_email_body_text(
     if not isinstance(latest_dir, (str, Path)):
         raise TypeError(f"latest_dir must be str or Path, got {type(latest_dir)}")
     
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
+    
     latest_dir_obj = Path(latest_dir)
     predictions_file = latest_dir_obj / f"decision_predictions_{horizon}.parquet"
     
@@ -210,7 +238,7 @@ def build_email_body_text(
         )
     
     # Extract prediction data (filtered if specified)
-    predictions = _extract_predictions_data(predictions_file, filter_pairs)
+    predictions = _extract_predictions_data(predictions_file, normalized_filter)
     
     if not predictions:
         # No predictions for the selected pairs
@@ -301,7 +329,7 @@ def build_email_body_text(
         sorted_series = sorted(manifest_data["row_counts"].keys())
         for series_id in sorted_series:
             # Only show row counts for filtered pairs
-            if filter_pairs is not None and series_id not in filter_pairs:
+            if normalized_filter is not None and series_id not in normalized_filter:
                 continue
             pair = _format_currency_pair(series_id)
             count = manifest_data["row_counts"][series_id]
@@ -357,6 +385,11 @@ def build_email_body_html(
     if not isinstance(latest_dir, (str, Path)):
         raise TypeError(f"latest_dir must be str or Path, got {type(latest_dir)}")
     
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
+    
     latest_dir_obj = Path(latest_dir)
     predictions_file = latest_dir_obj / f"decision_predictions_{horizon}.parquet"
     
@@ -367,7 +400,7 @@ def build_email_body_html(
         )
     
     # Extract prediction data (filtered if specified)
-    predictions = _extract_predictions_data(predictions_file, filter_pairs)
+    predictions = _extract_predictions_data(predictions_file, normalized_filter)
     
     if not predictions:
         # No predictions for the selected pairs
