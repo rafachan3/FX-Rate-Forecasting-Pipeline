@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 
 import pandas as pd
 
@@ -27,6 +29,9 @@ HORIZON_DISPLAY = {
     "h14": "14-Day",
     "h30": "30-Day",
 }
+
+# Default website URL for unsubscribe links
+DEFAULT_WEBSITE_URL = os.environ.get("WEBSITE_URL", "https://northbound-fx.com")
 
 
 def _format_currency_pair(series_id: str) -> str:
@@ -85,11 +90,34 @@ def build_email_subject(cfg: EmailConfig, horizon: str, run_date: str) -> str:
     return cfg.subject_template.format(horizon=horizon, run_date=run_date)
 
 
+def _normalize_pair_to_series_id(pair: str) -> str:
+    """
+    Convert database pair format (USD_CAD) to series_id format (FXUSDCAD).
+    
+    Examples:
+        USD_CAD -> FXUSDCAD
+        EUR_CAD -> FXEURCAD
+        FXUSDCAD -> FXUSDCAD (already normalized)
+    """
+    if pair.startswith("FX") and "_" not in pair:
+        return pair
+    if "_" in pair:
+        base, quote = pair.split("_", 1)
+        return f"FX{base}{quote}"
+    return pair
+
+
 def _extract_predictions_data(
     predictions_file: Path,
+    filter_pairs: Optional[List[str]] = None,
 ) -> list[dict]:
     """
     Extract latest prediction data for each series.
+    
+    Args:
+        predictions_file: Path to predictions parquet file
+        filter_pairs: Optional list of pairs to include (if None, include all).
+                      Accepts both USD_CAD and FXUSDCAD formats.
     
     Returns:
         List of dicts with series_id, p_up, action, date_str, sorted by series_id
@@ -104,8 +132,17 @@ def _extract_predictions_data(
             f"Available columns: {sorted(df_pred.columns)}"
         )
     
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
+    
     predictions = []
     for series_id in sorted(df_pred["series_id"].unique()):
+        # Filter by pairs if specified
+        if normalized_filter is not None and series_id not in normalized_filter:
+            continue
+            
         series_df = df_pred[df_pred["series_id"] == series_id]
         latest_date = series_df["obs_date"].max()
         latest_row = series_df[series_df["obs_date"] == latest_date].iloc[0]
@@ -161,6 +198,8 @@ def build_email_body_text(
     latest_dir: str | Path,
     manifest_path: str | Path | None = None,
     publish_config: dict | None = None,
+    filter_pairs: Optional[List[str]] = None,
+    unsubscribe_url: Optional[str] = None,
 ) -> str:
     """
     Build deterministic email body text from latest outputs.
@@ -171,6 +210,8 @@ def build_email_body_text(
         latest_dir: Path to latest outputs directory
         manifest_path: Optional path to manifest.json (if None, looks in latest_dir)
         publish_config: Optional dict with "runs_prefix" and "latest_prefix" if publish enabled
+        filter_pairs: Optional list of series_ids to include (if None, include all)
+        unsubscribe_url: Optional unsubscribe URL to include in footer
         
     Returns:
         Email body text (deterministic, sorted by series_id)
@@ -182,6 +223,11 @@ def build_email_body_text(
     if not isinstance(latest_dir, (str, Path)):
         raise TypeError(f"latest_dir must be str or Path, got {type(latest_dir)}")
     
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
+    
     latest_dir_obj = Path(latest_dir)
     predictions_file = latest_dir_obj / f"decision_predictions_{horizon}.parquet"
     
@@ -191,8 +237,12 @@ def build_email_body_text(
             "Cannot build email body without latest predictions."
         )
     
-    # Extract prediction data
-    predictions = _extract_predictions_data(predictions_file)
+    # Extract prediction data (filtered if specified)
+    predictions = _extract_predictions_data(predictions_file, normalized_filter)
+    
+    if not predictions:
+        # No predictions for the selected pairs
+        return ""
     
     # Extract manifest data
     if manifest_path is None:
@@ -217,7 +267,7 @@ def build_email_body_text(
     ]
     
     # Signal summary section
-    lines.append("📊 TODAY'S SIGNALS")
+    lines.append("TODAY'S SIGNALS")
     lines.append("─" * 50)
     lines.append("")
     
@@ -242,7 +292,7 @@ def build_email_body_text(
     
     # Quick reference table
     lines.append("─" * 50)
-    lines.append("📋 QUICK REFERENCE")
+    lines.append("QUICK REFERENCE")
     lines.append("─" * 50)
     lines.append("")
     lines.append("  Pair         Signal      Prob.    Action")
@@ -258,7 +308,7 @@ def build_email_body_text(
     
     # Interpretation guide
     lines.append("─" * 50)
-    lines.append("📖 HOW TO READ THESE SIGNALS")
+    lines.append("HOW TO READ THESE SIGNALS")
     lines.append("─" * 50)
     lines.append("")
     lines.append("  • Probability > 60%: Bullish signal (UP action)")
@@ -271,13 +321,16 @@ def build_email_body_text(
     
     # Technical details (collapsed)
     lines.append("─" * 50)
-    lines.append("🔧 TECHNICAL DETAILS")
+    lines.append("TECHNICAL DETAILS")
     lines.append("─" * 50)
     lines.append("")
     
     if manifest_data.get("row_counts"):
         sorted_series = sorted(manifest_data["row_counts"].keys())
         for series_id in sorted_series:
+            # Only show row counts for filtered pairs
+            if normalized_filter is not None and series_id not in normalized_filter:
+                continue
             pair = _format_currency_pair(series_id)
             count = manifest_data["row_counts"][series_id]
             lines.append(f"  {pair}: {count} historical data points")
@@ -293,6 +346,12 @@ def build_email_body_text(
     lines.append("═" * 50)
     lines.append("  This is an automated forecast from the FX Pipeline.")
     lines.append("  Not financial advice. Use at your own discretion.")
+    
+    # Add unsubscribe link if provided
+    if unsubscribe_url:
+        lines.append("")
+        lines.append(f"  To unsubscribe: {unsubscribe_url}")
+    
     lines.append("═" * 50)
     
     return "\n".join(lines)
@@ -305,6 +364,8 @@ def build_email_body_html(
     latest_dir: str | Path,
     manifest_path: str | Path | None = None,
     publish_config: dict | None = None,
+    filter_pairs: Optional[List[str]] = None,
+    unsubscribe_url: Optional[str] = None,
 ) -> str:
     """
     Build HTML email body from latest outputs.
@@ -315,12 +376,19 @@ def build_email_body_html(
         latest_dir: Path to latest outputs directory
         manifest_path: Optional path to manifest.json (if None, looks in latest_dir)
         publish_config: Optional dict with "runs_prefix" and "latest_prefix" if publish enabled
+        filter_pairs: Optional list of series_ids to include (if None, include all)
+        unsubscribe_url: Optional unsubscribe URL to include in footer
         
     Returns:
         Email body HTML (deterministic, sorted by series_id)
     """
     if not isinstance(latest_dir, (str, Path)):
         raise TypeError(f"latest_dir must be str or Path, got {type(latest_dir)}")
+    
+    # Normalize filter_pairs to series_id format (FXUSDCAD)
+    normalized_filter = None
+    if filter_pairs is not None:
+        normalized_filter = {_normalize_pair_to_series_id(p) for p in filter_pairs}
     
     latest_dir_obj = Path(latest_dir)
     predictions_file = latest_dir_obj / f"decision_predictions_{horizon}.parquet"
@@ -331,8 +399,12 @@ def build_email_body_html(
             "Cannot build email body without latest predictions."
         )
     
-    # Extract prediction data
-    predictions = _extract_predictions_data(predictions_file)
+    # Extract prediction data (filtered if specified)
+    predictions = _extract_predictions_data(predictions_file, normalized_filter)
+    
+    if not predictions:
+        # No predictions for the selected pairs
+        return ""
     
     # Extract manifest data
     if manifest_path is None:
@@ -422,6 +494,15 @@ def build_email_body_html(
         """
         table_rows.append(row)
     
+    # Unsubscribe footer section
+    unsubscribe_section = ""
+    if unsubscribe_url:
+        unsubscribe_section = f"""
+            <p style="margin: 16px 0 0 0;">
+                <a href="{unsubscribe_url}" style="color: #64748b; font-size: 11px; text-decoration: underline;">Unsubscribe from these emails</a>
+            </p>
+        """
+    
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -434,7 +515,7 @@ def build_email_body_html(
         
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); padding: 32px 24px; text-align: center; border-bottom: 1px solid #334155;">
-            <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: #64748b; margin-bottom: 8px;">FX Forecast Pipeline</div>
+            <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: #64748b; margin-bottom: 8px;">NorthBound FX</div>
             <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px;">{horizon_display} Signals</h1>
             <div style="color: #94a3b8; font-size: 14px; margin-top: 8px;">{readable_date}</div>
         </div>
@@ -485,8 +566,9 @@ def build_email_body_html(
         
         <!-- Footer -->
         <div style="padding: 24px; background-color: #0f172a; text-align: center; border-top: 1px solid #334155;">
-            <p style="margin: 0 0 8px 0; color: #64748b; font-size: 12px;">This is an automated forecast from the FX Pipeline.</p>
+            <p style="margin: 0 0 8px 0; color: #64748b; font-size: 12px;">This is an automated forecast from NorthBound FX.</p>
             <p style="margin: 0; color: #475569; font-size: 11px;">Not financial advice. Use at your own discretion.</p>
+            {unsubscribe_section}
         </div>
         
     </div>
@@ -555,4 +637,66 @@ def send_email(
         raise RuntimeError(
             f"Failed to send email via SendGrid: {type(e).__name__}: {str(e)}. "
             f"From: {cfg.from_email}, To: {cfg.to_emails}"
+        ) from e
+
+
+def send_email_to_recipient(
+    *,
+    api_key: str,
+    from_email: str,
+    to_email: str,
+    subject: str,
+    body_text: str,
+    body_html: str | None = None,
+) -> None:
+    """
+    Send email to a single recipient via SendGrid.
+    
+    Args:
+        api_key: SendGrid API key
+        from_email: Sender email address
+        to_email: Recipient email address
+        subject: Email subject
+        body_text: Email body text (plain text fallback)
+        body_html: Optional HTML email body
+        
+    Raises:
+        RuntimeError: If SendGrid send fails or sendgrid is not installed
+        ValueError: If api_key is not configured
+    """
+    if not api_key:
+        raise ValueError("SendGrid API key not provided.")
+    
+    # Lazy import of sendgrid
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
+    except ImportError:
+        raise RuntimeError("sendgrid required. Install with: pip install sendgrid")
+    
+    message = Mail(
+        from_email=from_email,
+        to_emails=[to_email],
+        subject=subject,
+        plain_text_content=body_text,
+        html_content=body_html,
+    )
+    
+    try:
+        sg = SendGridAPIClient(api_key)
+        response = sg.send(message)
+        
+        if response.status_code >= 300:
+            raise RuntimeError(
+                f"SendGrid returned non-success status: {response.status_code}. "
+                f"Body: {response.body}. "
+                f"From: {from_email}, To: {to_email}"
+            )
+            
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(
+            f"Failed to send email via SendGrid: {type(e).__name__}: {str(e)}. "
+            f"From: {from_email}, To: {to_email}"
         ) from e

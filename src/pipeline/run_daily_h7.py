@@ -21,6 +21,12 @@ from src.pipeline.email import (
     build_email_body_text,
     build_email_subject,
     send_email,
+    send_email_to_recipient,
+)
+from src.pipeline.subscribers import (
+    Subscriber,
+    fetch_subscribers_for_today,
+    generate_unsubscribe_url,
 )
 from src.pipeline.publish_s3 import publish_latest_outputs, publish_run_outputs
 from src.pipeline.run_date import toronto_now_iso, toronto_today
@@ -160,9 +166,22 @@ def main() -> None:
             else:
                 print(f"  Email: Enabled")
                 print(f"    From: {config.email.from_email}")
-                print(f"    To: {', '.join(config.email.to_emails)}")
+                print(f"    Fallback recipients: {', '.join(config.email.to_emails)}")
                 subject = build_email_subject(config.email, config.horizon, run_date)
                 print(f"    Subject: {subject}")
+                
+                # Try to show subscriber count
+                try:
+                    from datetime import datetime as dt
+                    run_date_obj = dt.strptime(run_date, "%Y-%m-%d").date()
+                    subscribers = fetch_subscribers_for_today(run_date_obj)
+                    print(f"    Database subscribers for today: {len(subscribers)}")
+                    for sub in subscribers[:5]:  # Show first 5
+                        print(f"      - {sub.email} ({sub.frequency}, {len(sub.pairs)} pairs)")
+                    if len(subscribers) > 5:
+                        print(f"      ... and {len(subscribers) - 5} more")
+                except Exception as e:
+                    print(f"    Database subscribers: Could not fetch ({e})")
         else:
             print(f"  Email: Disabled")
         
@@ -366,30 +385,114 @@ def main() -> None:
                 "latest_prefix": latest_prefix,
             }
         
-        # Build email subject and body
-        subject = build_email_subject(config.email, config.horizon, run_date)
-        body_text = build_email_body_text(
-            horizon=config.horizon,
-            run_date=run_date,
-            latest_dir=config.outputs.latest_dir,
-            manifest_path=None,  # Will auto-detect from latest_dir
-            publish_config=publish_config_dict,
-        )
+        # Get website URL for unsubscribe links
+        website_url = os.environ.get("WEBSITE_URL", "https://northbound-fx.com")
         
-        # Build HTML body if configured
-        body_html = None
-        if config.email.body_format == "html":
-            body_html = build_email_body_html(
+        # Try to fetch subscribers from database
+        subscribers_sent = 0
+        subscribers_failed = 0
+        
+        try:
+            # Convert run_date string to date object
+            from datetime import datetime as dt
+            run_date_obj = dt.strptime(run_date, "%Y-%m-%d").date()
+            
+            # Fetch active subscribers who should receive emails today
+            subscribers = fetch_subscribers_for_today(run_date_obj)
+            
+            if subscribers:
+                print(f"[run_daily_h7] found {len(subscribers)} subscribers for today")
+                
+                for subscriber in subscribers:
+                    try:
+                        # Generate unsubscribe URL for this subscriber
+                        unsubscribe_url = generate_unsubscribe_url(
+                            website_url, subscriber.unsubscribe_token
+                        )
+                        
+                        # Build personalized email subject
+                        subject = build_email_subject(config.email, config.horizon, run_date)
+                        
+                        # Build personalized email body filtered by subscriber's pairs
+                        body_text = build_email_body_text(
+                            horizon=config.horizon,
+                            run_date=run_date,
+                            latest_dir=config.outputs.latest_dir,
+                            manifest_path=None,
+                            publish_config=publish_config_dict,
+                            filter_pairs=subscriber.pairs if subscriber.pairs else None,
+                            unsubscribe_url=unsubscribe_url,
+                        )
+                        
+                        # Skip if no predictions for this subscriber's pairs
+                        if not body_text:
+                            print(f"[run_daily_h7] skipping {subscriber.email}: no signals for selected pairs")
+                            continue
+                        
+                        # Build HTML body if configured
+                        body_html = None
+                        if config.email.body_format == "html":
+                            body_html = build_email_body_html(
+                                horizon=config.horizon,
+                                run_date=run_date,
+                                latest_dir=config.outputs.latest_dir,
+                                manifest_path=None,
+                                publish_config=publish_config_dict,
+                                filter_pairs=subscriber.pairs if subscriber.pairs else None,
+                                unsubscribe_url=unsubscribe_url,
+                            )
+                        
+                        # Send personalized email to this subscriber
+                        send_email_to_recipient(
+                            api_key=config.email.api_key,
+                            from_email=config.email.from_email,
+                            to_email=subscriber.email,
+                            subject=subject,
+                            body_text=body_text,
+                            body_html=body_html,
+                        )
+                        subscribers_sent += 1
+                        
+                    except Exception as e:
+                        print(f"[run_daily_h7] failed to send to {subscriber.email}: {e}")
+                        subscribers_failed += 1
+                
+                emailed_info = f" emailed={subscribers_sent}/{len(subscribers)}"
+                if subscribers_failed > 0:
+                    emailed_info += f" (failed={subscribers_failed})"
+            else:
+                print("[run_daily_h7] no subscribers to email today (check frequency settings)")
+                emailed_info = " emailed=0/0"
+                
+        except Exception as e:
+            # If database fetch fails, fall back to config recipients
+            print(f"[run_daily_h7] could not fetch subscribers from database: {e}")
+            print("[run_daily_h7] falling back to config recipients")
+            
+            # Build email subject and body (without personalization)
+            subject = build_email_subject(config.email, config.horizon, run_date)
+            body_text = build_email_body_text(
                 horizon=config.horizon,
                 run_date=run_date,
                 latest_dir=config.outputs.latest_dir,
-                manifest_path=None,  # Will auto-detect from latest_dir
+                manifest_path=None,
                 publish_config=publish_config_dict,
             )
-        
-        # Send email (with HTML if configured)
-        send_email(config.email, subject, body_text, body_html)
-        emailed_info = " emailed=true"
+            
+            # Build HTML body if configured
+            body_html = None
+            if config.email.body_format == "html":
+                body_html = build_email_body_html(
+                    horizon=config.horizon,
+                    run_date=run_date,
+                    latest_dir=config.outputs.latest_dir,
+                    manifest_path=None,
+                    publish_config=publish_config_dict,
+                )
+            
+            # Send email to config recipients (fallback)
+            send_email(config.email, subject, body_text, body_html)
+            emailed_info = " emailed=fallback"
     
     # Print single success line
     print(
