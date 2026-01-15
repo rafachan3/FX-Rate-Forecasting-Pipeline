@@ -68,7 +68,7 @@ The **Next.js** app serves the web dashboard and manages subscriptions.
 - Users interact with the dashboard at [northbound-fx.com](https://www.northbound-fx.com/)
 
 ### Deployment
-The **Deploy Lambdas Workflow** (GitHub Actions) automatically updates Lambda function code when changes are pushed to `src/lambdas/`.
+The **Deploy Lambdas Workflow** (GitHub Actions) automatically updates Lambda function code when changes to `src/lambdas/` are pushed to `main`.
 
 ## Features
 
