@@ -5,7 +5,7 @@
 
 An end-to-end machine learning pipeline for **directional FX forecasting** with automated daily predictions, email alerts, and a [live web dashboard](https://www.northbound-fx.com/).
 
-## 🎯 What It Does
+## What It Does
 
 Predicts whether currency pairs (against CAD) will go **UP**, **DOWN**, or **SIDEWAYS** over a 7-business-day horizon, with confidence-gated decision-making.
 
@@ -34,34 +34,43 @@ All pairs are quoted against the Canadian Dollar (CAD):
 | | | NZD/CAD | |
 | | | IDR/CAD | |
 
-## 🏗️ Architecture
+## Architecture
 
-<!-- TODO: Replace with actual architecture diagram -->
-![Architecture Diagram](docs/architecture.png)
+<p align="center">
+  <img src="docs/architecture.png" alt="Architecture Diagram" width="800">
+</p>
 
-*Architecture diagram coming soon*
+The system consists of two automated pipelines and a serving layer:
 
-The system consists of two automated pipelines:
-
-### 1. Data Ingestion Pipeline (AWS Step Functions)
+### 1. Data Ingestion Pipeline (AWS)
 Runs **weekdays at 5:30 PM ET** via EventBridge — 30 minutes after the Bank of Canada Valet API releases daily FX rates.
 
-```
-BronzeIngestion → BronzeToSilver → SilverToGold
-     (Lambda)         (Lambda)         (Lambda)
-```
+1. **EventBridge** triggers the Step Functions workflow on schedule
+2. **Bronze Ingestion** (Lambda) fetches raw FX rates from the Bank of Canada Valet API
+3. **Bronze → Silver** (Lambda) cleans and validates the data
+4. **Silver → Gold** (Lambda) applies business transformations and writes to S3
 
-Each step has success/failure checks with error handling. Data flows through the medallion architecture (Bronze → Silver → Gold) and is stored in S3.
+Data flows through the medallion architecture and is stored in the S3 data lake.
 
-### 2. ML Inference Pipeline (GitHub Actions)
+### 2. H7 Daily Pipeline (GitHub Actions)
 Runs **daily at 6 AM UTC** to generate predictions from the latest gold data.
 
-- Syncs gold data from S3
-- Runs logistic regression inference
-- Publishes predictions to S3
-- Sends email alerts via SendGrid
+1. Authenticates to AWS via **OIDC** (assumes IAM role)
+2. Runs **inference + decision policy** Python scripts
+3. Reads gold data from S3, writes predictions back to S3
+4. Sends forecast emails via **SendGrid**
 
-## ✨ Features
+### 3. Serving Layer (Vercel)
+The **Next.js** app serves the web dashboard and manages subscriptions.
+
+- Reads latest predictions from **S3**
+- Stores subscriber emails in **PostgreSQL** (Neon)
+- Users interact with the dashboard at [northbound-fx.com](https://www.northbound-fx.com/)
+
+### Deployment
+The **Deploy Lambdas Workflow** (GitHub Actions) automatically updates Lambda function code when changes are pushed to `src/lambdas/`.
+
+## Features
 
 | Component | Description |
 |-----------|-------------|
@@ -72,7 +81,7 @@ Runs **daily at 6 AM UTC** to generate predictions from the latest gold data.
 | **Web Dashboard** | Next.js frontend on Vercel at [northbound-fx.com](https://www.northbound-fx.com/) |
 | **Email Alerts** | Daily forecast summaries via SendGrid (Mon–Fri at 5:30 PM ET) |
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 **Data Engineering**
 - AWS Step Functions (orchestration)
@@ -97,7 +106,7 @@ Runs **daily at 6 AM UTC** to generate predictions from the latest gold data.
 **Frontend**
 - Next.js 14, TypeScript, Tailwind CSS
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 FX-Rate-Forecasting-Pipeline/
@@ -125,7 +134,7 @@ FX-Rate-Forecasting-Pipeline/
 └── tests/                 # Unit and integration tests
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -165,7 +174,7 @@ The notebooks cover the complete ML journey from data QC through model training 
 >
 > If you need access to the complete dataset or production pipeline, please contact the repository owners.
 
-## 📓 Research Notebooks
+## Research Notebooks
 
 | # | Notebook | Purpose |
 |---|----------|---------|
@@ -177,11 +186,9 @@ The notebooks cover the complete ML journey from data QC through model training 
 | 06 | Decision Policy | Confidence gating, coverage vs accuracy tradeoffs |
 | 07 | Probability Calibration | Isotonic regression, ECE, policy-aware calibration |
 
-## 🌐 API
+## API
 
 The API powers the [NorthBound website](https://www.northbound-fx.com/) and is publicly accessible.
-
-See [README_API.md](README_API.md) for full documentation.
 
 **Key Endpoints:**
 
@@ -196,7 +203,7 @@ GET /v1/predictions/h7/latest?pairs=USD_CAD,EUR_CAD
 POST /v1/subscriptions
 ```
 
-## 📊 Output Format
+## Output Format
 
 Each prediction includes:
 
@@ -208,11 +215,11 @@ Each prediction includes:
 | `obs_date` | Observation date |
 | `horizon_bdays` | Forecast horizon (7 business days) |
 
-## 🤝 Contributors
+## Contributors
 
 Built by **Rafael Chantres Garcia** and **Ian Vicente Aburto**.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This project is for **educational and portfolio purposes only**. It does not constitute financial advice and should not be used for actual trading decisions. Past performance does not guarantee future results.
 
