@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "NorthBound - FX Research Signals",
-  description: "Get probabilistic directional research signals for major FX pairs delivered to your inbox. Research, not trading advice.",
+  description: "FX direction signals for CAD pairs delivered to your inbox. Research, not trading advice.",
   icons: {
     icon: "/brand/northbound-logo.png",
     shortcut: "/brand/northbound-logo.png",
