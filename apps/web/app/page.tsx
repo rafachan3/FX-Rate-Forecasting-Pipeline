@@ -66,7 +66,7 @@ export default function Home() {
           <div className="space-y-8">
             <div ref={heroRef} className="space-y-3">
               <h1 className="text-[42px] font-bold leading-tight text-[#E5E7EB]">
-                Get probabilistic FX direction before the market moves.
+                Probabilistic FX direction against CAD, before the market moves
               </h1>
               <p className="text-[18px] text-[#94A3B8] leading-relaxed">
                 Research signals sent Mon–Fri at 5:30pm ET. 
