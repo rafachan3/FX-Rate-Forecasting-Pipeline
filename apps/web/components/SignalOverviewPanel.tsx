@@ -147,7 +147,7 @@ export default function SignalOverviewPanel({ pairs = ['USD_CAD', 'EUR_CAD', 'GB
             <h2 className="text-lg font-semibold text-[#E5E7EB]">Signal Overview</h2>
             <span className="text-xs text-[#94A3B8]">Last 7 days</span>
           </div>
-          <p className="text-xs text-[#94A3B8]">Updated daily · Research-only</p>
+          <p className="text-xs text-[#94A3B8]">Updated Mon–Fri · Not financial advice</p>
         </div>
 
         {/* Loading State */}
