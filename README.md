@@ -2,6 +2,7 @@
 
 [![H7 Daily Pipeline](https://github.com/rafachan3/FX-Rate-Forecasting-Pipeline/actions/workflows/h7_daily.yml/badge.svg)](https://github.com/rafachan3/FX-Rate-Forecasting-Pipeline/actions/workflows/h7_daily.yml)
 [![Live Site](https://img.shields.io/badge/Live-northbound--fx.com-blue)](https://www.northbound-fx.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An end-to-end machine learning pipeline for **directional FX forecasting** with automated daily predictions, email alerts, and a [live web dashboard](https://www.northbound-fx.com/).
 
@@ -79,7 +80,7 @@ The **Deploy Lambdas Workflow** (GitHub Actions) automatically updates Lambda fu
 | **Daily Automation** | EventBridge triggers data ingestion; GitHub Actions runs ML inference |
 | **REST API** | FastAPI on AWS Lambda serving predictions for the web dashboard |
 | **Web Dashboard** | Next.js frontend on Vercel at [northbound-fx.com](https://www.northbound-fx.com/) |
-| **Email Alerts** | Daily forecast summaries via SendGrid (Mon–Fri at 5:30 PM ET) |
+| **Email Alerts** | Personalized forecasts via SendGrid — users select currency pairs and frequency (daily, weekly, or monthly) |
 
 ## Tech Stack
 
@@ -224,6 +225,10 @@ Each prediction includes:
 ## Contributors
 
 Built by **Rafael Chantres Garcia** and **Ian Vicente Aburto**.
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ## Disclaimer
 
