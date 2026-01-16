@@ -2,7 +2,8 @@ name: H7 Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    # 5:30 PM ET Monday-Friday (22:30 UTC = 5:30 PM EST, 6:30 PM EDT during DST)
+    - cron: '30 22 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:

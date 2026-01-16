@@ -189,12 +189,7 @@ export default function SignupForm() {
             </svg>
           </div>
           <div>
-            <p className="text-lg font-semibold text-[#E5E7EB] mb-1">Subscription saved</p>
-            <p className="text-sm text-[#94A3B8]">
-              {emailEnabled === false
-                ? 'Your subscription has been saved. Email delivery will begin once enabled.'
-                : `We've sent a confirmation link to ${email}`}
-            </p>
+            <p className="text-lg font-semibold text-[#E5E7EB]">Subscription saved</p>
           </div>
         </div>
       </div>

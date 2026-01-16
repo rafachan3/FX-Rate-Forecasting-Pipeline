@@ -1,18 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import SignupForm from '@/components/SignupForm';
 import Nav from '@/components/Nav';
 import WhatYouReceive from '@/components/WhatYouReceive';
 import SignalOverviewPanel from '@/components/SignalOverviewPanel';
-import UnsubscribeModal from '@/components/UnsubscribeModal';
 
 export default function Home() {
   const heroRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const mobileHeaderRef = useRef<HTMLDivElement>(null);
-  const [isUnsubscribeModalOpen, setIsUnsubscribeModalOpen] = useState(false);
 
   useEffect(() => {
     // Subtle entrance animation
@@ -50,7 +48,7 @@ export default function Home() {
               FX research signals by email
             </h1>
             <p className="text-sm text-[#94A3B8] leading-relaxed">
-              Probabilistic direction for major FX pairs
+              Probabilistic direction for major FX pairs against the Canadian dollar
             </p>
           </div>
           <div ref={formRef} className="max-w-md mx-auto">
@@ -90,19 +88,11 @@ export default function Home() {
       {/* Footer */}
       <footer className="relative border-t border-[#334155] bg-[#0f172a]">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="text-xs text-[#94A3B8] flex items-center justify-between">
+          <div className="text-xs text-[#94A3B8]">
             <p>Free. Cancel anytime.</p>
-            <button
-              onClick={() => setIsUnsubscribeModalOpen(true)}
-              className="text-[#3b82f6] hover:text-[#2563eb] transition-colors duration-150 ease-out underline focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:ring-offset-2 focus:ring-offset-[#0f172a] rounded"
-            >
-              Unsubscribe
-            </button>
           </div>
         </div>
       </footer>
-
-      <UnsubscribeModal isOpen={isUnsubscribeModalOpen} onClose={() => setIsUnsubscribeModalOpen(false)} />
     </div>
   );
 }
