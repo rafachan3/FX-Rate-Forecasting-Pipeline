@@ -69,7 +69,7 @@ export default function Home() {
                 Probabilistic FX direction against CAD, before the market moves
               </h1>
               <p className="text-[18px] text-[#94A3B8] leading-relaxed">
-                Signals updated Mon–Fri at 5:30pm ET. 
+                Signals updated Mon–Fri at 6:00pm ET. 
               </p>
             </div>
             <div ref={formRef} className="pt-0">
