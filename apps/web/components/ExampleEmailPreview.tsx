@@ -25,7 +25,7 @@ export default function ExampleEmailPreview() {
       <div className="space-y-3">
         <div>
           <h3 className="text-sm font-semibold text-[#E5E7EB] mb-1">Example signal email</h3>
-          <p className="text-xs text-[#94A3B8]">Dec 30 · 5:30pm ET</p>
+          <p className="text-xs text-[#94A3B8]">Dec 30 · 6:00pm ET</p>
         </div>
         
         <div className="space-y-2.5">

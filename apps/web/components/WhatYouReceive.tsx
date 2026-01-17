@@ -62,7 +62,7 @@ export default function WhatYouReceive() {
           
           <div className="mt-6 pt-4 border-t border-[#334155]">
             <p className="text-xs text-[#94A3B8]">
-              Last update: Dec 31, 5:30pm ET
+              Last update: Dec 31, 6:00pm ET
             </p>
           </div>
         </div>
