@@ -6,12 +6,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
   email VARCHAR(255) UNIQUE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   verified_at TIMESTAMP WITH TIME ZONE,
-  unsubscribe_token VARCHAR(64) UNIQUE NOT NULL
+  unsubscribe_token VARCHAR(64) UNIQUE NOT NULL,
+  verification_token VARCHAR(255),
+  verification_expires_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_email ON subscriptions(email);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_unsubscribe_token ON subscriptions(unsubscribe_token);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_verification_token ON subscriptions(verification_token);
 
 -- Subscription preferences table
 CREATE TABLE IF NOT EXISTS subscription_preferences (
