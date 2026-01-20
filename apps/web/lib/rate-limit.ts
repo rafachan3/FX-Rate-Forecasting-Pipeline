@@ -110,8 +110,12 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const ip = getClientIP(request);
   const now = new Date();
-  const windowStart = new Date(now.getTime() - (config.windowSeconds * 1000));
-  const windowStartIso = windowStart.toISOString(); // Pass as primitive string
+  // Use fixed window: round down to the start of the current window
+  // This ensures all requests in the same window use the same window_start
+  // Example: For 1-hour window, all requests between 06:00:00-06:59:59 get window_start = 06:00:00
+  const windowStartMs = Math.floor(now.getTime() / (config.windowSeconds * 1000)) * (config.windowSeconds * 1000);
+  const windowStart = new Date(windowStartMs);
+  const windowStartIso = windowStart.toISOString();
   
   // Ensure table exists (idempotent)
   await ensureRateLimitTable();
