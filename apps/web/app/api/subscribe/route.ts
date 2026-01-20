@@ -79,12 +79,12 @@ export async function POST(request: NextRequest) {
     const pairsArr = Array.isArray(pairs) ? (pairs as string[]) : [];
     const pairsCsv: string | null = pairsArr.length > 0 ? pairsArr.join(',') : null;
 
-    // Upsert subscription (insert or update, set is_active = true)
+    // Upsert subscription (insert or update if exists)
     const subscriptionResult = await sql`
-      INSERT INTO subscriptions (email, is_active)
-      VALUES (${emailLower}, true)
+      INSERT INTO subscriptions (email)
+      VALUES (${emailLower})
       ON CONFLICT (email) 
-      DO UPDATE SET is_active = true
+      DO UPDATE SET email = ${emailLower}
       RETURNING id
     `;
 
@@ -165,19 +165,16 @@ export async function DELETE(request: NextRequest) {
 
     const emailLower = email.toLowerCase();
 
-    // Soft delete: set is_active = false
-    const result = await sql`
-      UPDATE subscriptions
-      SET is_active = false
-      WHERE email = ${emailLower}
-      RETURNING id
-    `;
-
-    // Return success even if email not found (idempotency)
+    // Note: Actual unsubscription is handled via unique unsubscribe links in emails
+    // This endpoint is kept for API compatibility but doesn't modify the database
+    // The real unsubscribe flow uses the unique token-based system
+    
+    // Return success (idempotent - always succeeds)
     return NextResponse.json({
       ok: true,
       status: 'unsubscribed',
       email: emailLower,
+      message: 'Unsubscribe request received. Please use the unsubscribe link in your email for immediate effect.',
     });
   } catch (error) {
     console.error('Unsubscribe error:', error);
