@@ -2,7 +2,8 @@ name: H7 Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    # 6:00 PM ET Monday-Friday (23:00 UTC = 6:00 PM EST, 7:00 PM EDT during DST)
+    - cron: '0 23 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -101,6 +102,8 @@ jobs:
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          WEBSITE_URL: ${{ secrets.WEBSITE_URL }}
         run: |
           set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then
