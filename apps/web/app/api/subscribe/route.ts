@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { checkRateLimit, rateLimitErrorResponse, RateLimitConfig } from '@/lib/rate-limit';
 import { randomUUID } from 'crypto';
 
 function isValidEmail(email: string): boolean {
@@ -12,7 +13,20 @@ function generateUnsubscribeToken(): string {
   return randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 }
 
+// Rate limit configuration for subscriptions
+const SUBSCRIBE_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 5, // 5 subscriptions per hour per IP
+  windowSeconds: 3600, // 1 hour
+  identifier: 'subscribe',
+};
+
 export async function POST(request: NextRequest) {
+  // Check rate limit before processing
+  const rateLimitResult = await checkRateLimit(request, SUBSCRIBE_RATE_LIMIT);
+  if (!rateLimitResult.allowed) {
+    return rateLimitErrorResponse(rateLimitResult, SUBSCRIBE_RATE_LIMIT);
+  }
+
   try {
     const body = await request.json();
     const { email, pairs, frequency, weekly_day, monthly_timing, timezone } = body;
@@ -170,7 +184,20 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Rate limit configuration for unsubscribes
+const UNSUBSCRIBE_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 10, // 10 unsubscribe requests per hour per IP
+  windowSeconds: 3600, // 1 hour
+  identifier: 'unsubscribe',
+};
+
 export async function DELETE(request: NextRequest) {
+  // Check rate limit before processing
+  const rateLimitResult = await checkRateLimit(request, UNSUBSCRIBE_RATE_LIMIT);
+  if (!rateLimitResult.allowed) {
+    return rateLimitErrorResponse(rateLimitResult, UNSUBSCRIBE_RATE_LIMIT);
+  }
+
   try {
     const body = await request.json();
     const { email, token } = body;
