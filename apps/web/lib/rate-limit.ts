@@ -111,6 +111,7 @@ export async function checkRateLimit(
   const ip = getClientIP(request);
   const now = new Date();
   const windowStart = new Date(now.getTime() - (config.windowSeconds * 1000));
+  const windowStartIso = windowStart.toISOString(); // Pass as primitive string
   
   // Ensure table exists (idempotent)
   await ensureRateLimitTable();
@@ -124,7 +125,7 @@ export async function checkRateLimit(
     // Try to get or create rate limit record
     const result = await sql`
       INSERT INTO rate_limits (identifier, ip_address, request_count, window_start)
-      VALUES (${config.identifier}, ${ip}, 1, ${windowStart})
+      VALUES (${config.identifier}, ${ip}, 1, ${windowStartIso})
       ON CONFLICT (identifier, ip_address, window_start)
       DO UPDATE SET
         request_count = rate_limits.request_count + 1
