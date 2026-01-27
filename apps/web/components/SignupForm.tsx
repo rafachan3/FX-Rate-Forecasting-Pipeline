@@ -47,6 +47,7 @@ export default function SignupForm() {
   const [monthlyRule, setMonthlyRule] = useState<'first_business_day' | 'last_business_day'>('first_business_day');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -156,9 +157,10 @@ export default function SignupForm() {
         ...(frequency === 'monthly' && monthlyTimingForApi && { monthly_timing: monthlyTimingForApi }),
       };
 
-      await createSubscription(payload);
+      const response = await createSubscription(payload);
       setLoading(false);
       setSuccess(true);
+      setVerificationRequired(response.verification_required || false);
     } catch (err) {
       setLoading(false);
       if (err instanceof ApiClientError) {
@@ -173,24 +175,57 @@ export default function SignupForm() {
     return (
       <div className="rounded-lg border border-[#334155] bg-[#111827] p-8 transition-all duration-200">
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20">
-            <svg
-              className="h-8 w-8 text-[#22C55E]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
-          <div>
-            <p className="text-lg font-semibold text-[#E5E7EB]">Subscription saved</p>
-          </div>
+          {verificationRequired ? (
+            <>
+              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[#3b82f6]/10 border border-[#3b82f6]/20">
+                <svg
+                  className="h-8 w-8 text-[#3b82f6]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div className="space-y-3">
+                <p className="text-lg font-semibold text-[#E5E7EB]">Check your email</p>
+                <p className="text-sm text-[#94A3B8] leading-relaxed max-w-md">
+                  We've sent a verification link to <span className="text-[#E5E7EB] font-medium">{email}</span>. Please click the link to verify your email address.
+                </p>
+                <div className="rounded-md bg-[#1e293b] border border-[#334155] p-3 mt-4">
+                  <p className="text-xs text-[#94A3B8] leading-relaxed">
+                    <span className="font-medium text-[#E5E7EB]">Note:</span> The email may take a few minutes to arrive. Please check your spam or junk folder if you don't see it in your inbox.
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-[#22C55E]/10 border border-[#22C55E]/20">
+                <svg
+                  className="h-8 w-8 text-[#22C55E]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-[#E5E7EB]">Subscription saved</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
