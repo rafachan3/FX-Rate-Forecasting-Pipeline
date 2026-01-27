@@ -95,10 +95,11 @@ export interface SubscriptionRequest {
 }
 
 export interface SubscriptionResponse {
+  ok: boolean;
   status: string;
   email: string;
   subscription_id: string;
-  email_enabled: boolean;
+  verification_required?: boolean;
   message: string;
 }
 
