@@ -13,6 +13,72 @@ function generateUnsubscribeToken(): string {
   return randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 }
 
+function generateVerificationToken(): string {
+  // Generate a secure random token (64 hex characters)
+  return randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+}
+
+const VERIFICATION_TTL_HOURS = 24;
+
+function getVerificationExpiry(): string {
+  const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
+  return expiresAt.toISOString();
+}
+
+async function sendVerificationEmail(email: string, token: string) {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) {
+    console.warn('SENDGRID_API_KEY not set, skipping verification email');
+    return;
+  }
+  const websiteUrl = (process.env.WEBSITE_URL || 'https://northbound-fx.com').replace(/\/$/, '');
+  const fromEmail = process.env.EMAIL_FROM || 'noreply@northbound-fx.com';
+  const fromName = process.env.EMAIL_FROM_NAME || 'NorthBound FX';
+  const verifyUrl = `${websiteUrl}/verify?token=${encodeURIComponent(token)}`;
+
+  const subject = 'Verify your email for NorthBound FX';
+  const textBody = [
+    'Welcome to NorthBound FX!',
+    '',
+    'Please verify your email to start receiving FX signals:',
+    verifyUrl,
+    '',
+    'If you did not request this, you can ignore this email.',
+  ].join('\n');
+
+  const htmlBody = `
+    <p>Welcome to NorthBound FX!</p>
+    <p>Please verify your email to start receiving FX signals:</p>
+    <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+    <p>If you did not request this, you can ignore this email.</p>
+  `;
+
+  try {
+    await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        personalizations: [
+          {
+            to: [{ email }],
+          },
+        ],
+        from: { email: fromEmail, name: fromName },
+        subject,
+        content: [
+          { type: 'text/plain', value: textBody },
+          { type: 'text/html', value: htmlBody },
+        ],
+      }),
+    });
+  } catch (err) {
+    console.error('Failed to send verification email', err);
+  }
+}
+
 // Rate limit configuration for subscriptions
 const SUBSCRIBE_RATE_LIMIT: RateLimitConfig = {
   maxRequests: 5, // 5 subscriptions per hour per IP
@@ -87,21 +153,34 @@ export async function POST(request: NextRequest) {
 
     // Check if subscriber already exists
     const existingResult = await sql`
-      SELECT id, unsubscribe_token FROM subscriptions 
+      SELECT id, unsubscribe_token, verified_at, verification_token, verification_expires_at
+      FROM subscriptions 
       WHERE email = ${emailLower}
     `;
 
     let subscriptionId: number;
     let unsubscribeToken: string;
+    let verificationToken: string | null = null;
+    let verificationExpiresAt: string | null = null;
+    const isNewSubscriber = existingResult.rows.length === 0;
+    const isVerified = !isNewSubscriber && existingResult.rows[0].verified_at !== null;
+
+    if (!isVerified) {
+      verificationToken = generateVerificationToken();
+      verificationExpiresAt = getVerificationExpiry();
+    }
 
     if (existingResult.rows.length > 0) {
-      // Update existing subscription
+      // Update existing subscription (preserve unsubscribe_token, refresh verification token if not verified)
       subscriptionId = existingResult.rows[0].id;
       unsubscribeToken = existingResult.rows[0].unsubscribe_token;
 
       await sql`
         UPDATE subscriptions 
-        SET verified_at = NOW()
+        SET 
+          verification_token = ${verificationToken},
+          verification_expires_at = ${verificationExpiresAt},
+          updated_at = NOW()
         WHERE id = ${subscriptionId}
       `;
 
@@ -137,10 +216,12 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new subscription
       unsubscribeToken = generateUnsubscribeToken();
+      verificationToken = verificationToken || generateVerificationToken();
+      verificationExpiresAt = verificationExpiresAt || getVerificationExpiry();
 
       const insertResult = await sql`
-        INSERT INTO subscriptions (email, unsubscribe_token, created_at)
-        VALUES (${emailLower}, ${unsubscribeToken}, NOW())
+        INSERT INTO subscriptions (email, unsubscribe_token, verification_token, verification_expires_at, created_at, updated_at)
+        VALUES (${emailLower}, ${unsubscribeToken}, ${verificationToken}, ${verificationExpiresAt}, NOW(), NOW())
         RETURNING id
       `;
       subscriptionId = insertResult.rows[0].id;
@@ -168,12 +249,20 @@ export async function POST(request: NextRequest) {
       `;
     }
 
+    // Send verification email if not verified yet and we have a token
+    if (!isVerified && verificationToken) {
+      void sendVerificationEmail(emailLower, verificationToken);
+    }
+
     return NextResponse.json({
       ok: true,
       status: 'created_or_updated',
       email: emailLower,
       subscription_id: subscriptionId,
-      message: 'Subscription saved successfully. You will start receiving FX signals based on your preferences.',
+      verification_required: !isVerified,
+      message: !isVerified
+        ? 'Subscription saved. Please verify your email via the link we sent you.'
+        : 'Subscription saved successfully.',
     });
   } catch (error) {
     console.error('Subscription error:', error);
